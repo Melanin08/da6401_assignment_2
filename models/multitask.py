@@ -1,34 +1,205 @@
-"""Unified multi-task model
-"""
+"""Unified multi-task model."""
 
+import os
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+
+from .vgg11 import VGG11
+from .layers import CustomDropout
+
+
+class DoubleConv(nn.Module):
+    """Two convolution blocks used in the segmentation decoder."""
+
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.block(x)
+
 
 class MultiTaskPerceptionModel(nn.Module):
-    """Shared-backbone multi-task model."""
+    def __init__(
+        self,
+        num_breeds: int = 37,
+        seg_classes: int = 3,
+        in_channels: int = 3,
+        dropout_p: float = 0.5,
+        classifier_path: str = "checkpoints/classifier.pth",
+        localizer_path: str = "checkpoints/localizer.pth",
+        unet_path: str = "checkpoints/unet.pth",
+        load_pretrained: bool = True,
+    ):
+        super().__init__()
 
-    def __init__(self, num_breeds: int = 37, seg_classes: int = 3, in_channels: int = 3, classifier_path: str = "classifier.pth", localizer_path: str = "localizer.pth", unet_path: str = "unet.pth"):
-        """
-        Initialize the shared backbone/heads using these trained weights.
-        Args:
-            num_breeds: Number of output classes for classification head.
-            seg_classes: Number of output classes for segmentation head.
-            in_channels: Number of input channels.
-            classifier_path: Path to trained classifier weights.
-            localizer_path: Path to trained localizer weights.
-            unet_path: Path to trained unet weights.
-        """
-        pass
+        # Backbone
+        self.backbone = VGG11(in_channels)
+
+        # Classification head
+        self.classification_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((7, 7)),
+            nn.Flatten(),
+            nn.Linear(512 * 7 * 7, 4096),
+            nn.ReLU(inplace=True),
+            CustomDropout(dropout_p),
+            nn.Linear(4096, 4096),
+            nn.ReLU(inplace=True),
+            CustomDropout(dropout_p),
+            nn.Linear(4096, num_breeds),
+        )
+
+        # Localization head
+        self.localization_head = nn.Sequential(
+            nn.AdaptiveAvgPool2d((7, 7)),
+            nn.Flatten(),
+            nn.Linear(512 * 7 * 7, 4096),
+            nn.ReLU(inplace=True),
+            CustomDropout(dropout_p),
+            nn.Linear(4096, 1024),
+            nn.ReLU(inplace=True),
+            CustomDropout(dropout_p),
+            nn.Linear(1024, 4),
+        )
+
+        # Segmentation decoder
+        self.up5 = nn.ConvTranspose2d(512, 512, 2, 2)
+        self.dec5 = DoubleConv(1024, 512)
+
+        self.up4 = nn.ConvTranspose2d(512, 512, 2, 2)
+        self.dec4 = DoubleConv(1024, 512)
+
+        self.up3 = nn.ConvTranspose2d(512, 256, 2, 2)
+        self.dec3 = DoubleConv(512, 256)
+
+        self.up2 = nn.ConvTranspose2d(256, 128, 2, 2)
+        self.dec2 = DoubleConv(256, 128)
+
+        self.up1 = nn.ConvTranspose2d(128, 64, 2, 2)
+        self.dec1 = DoubleConv(128, 64)
+
+        self.final_seg = nn.Conv2d(64, seg_classes, kernel_size=1)
+
+        if load_pretrained:
+            self._load_pretrained_weights(
+                classifier_path, localizer_path, unet_path
+            )
+
+    # LOAD WEIGHTS  #
+
+    def _extract_state_dict(self, checkpoint):
+        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+            return checkpoint["state_dict"]
+        return checkpoint
+
+    def _load_matching_prefix(self, source_state, target_state, source_prefix, target_prefix):
+        for key, value in source_state.items():
+            if key.startswith(source_prefix):
+                new_key = target_prefix + key[len(source_prefix):]
+                if new_key in target_state and target_state[new_key].shape == value.shape:
+                    target_state[new_key] = value
+        return target_state
+
+    def _load_pretrained_weights(self, classifier_path, localizer_path, unet_path):
+        state = self.state_dict()
+
+        # CLASSIFIER
+        if classifier_path and os.path.exists(classifier_path):
+            ckpt = torch.load(classifier_path, map_location="cpu")
+            src = self._extract_state_dict(ckpt)
+
+            state = self._load_matching_prefix(src, state, "encoder.", "backbone.")
+            state = self._load_matching_prefix(src, state, "classifier.", "classification_head.")
+
+        # LOCALIZER
+        if localizer_path and os.path.exists(localizer_path):
+            ckpt = torch.load(localizer_path, map_location="cpu")
+            src = self._extract_state_dict(ckpt)
+
+            state = self._load_matching_prefix(src, state, "encoder.", "backbone.")
+            state = self._load_matching_prefix(src, state, "regressor.", "localization_head.")
+
+        # UNET
+        if unet_path and os.path.exists(unet_path):
+            ckpt = torch.load(unet_path, map_location="cpu")
+            src = self._extract_state_dict(ckpt)
+
+            state = self._load_matching_prefix(src, state, "encoder.", "backbone.")
+
+            for name in ["up5","dec5","up4","dec4","up3","dec3","up2","dec2","up1","dec1","final_seg"]:
+                state = self._load_matching_prefix(src, state, f"{name}.", f"{name}.")
+
+        self.load_state_dict(state, strict=False)
+
+    # FORWARD  #
 
     def forward(self, x: torch.Tensor):
-        """Forward pass for multi-task model.
-        Args:
-            x: Input tensor of shape [B, in_channels, H, W].
-        Returns:
-            A dict with keys:
-            - 'classification': [B, num_breeds] logits tensor.
-            - 'localization': [B, 4] bounding box tensor.
-            - 'segmentation': [B, seg_classes, H, W] segmentation logits tensor
-        """
-        # TODO: Implement forward pass.
-        raise NotImplementedError("Implement MultiTaskPerceptionModel.forward")
+        bottleneck, features = self.backbone(x, return_features=True)
+
+        f1, f2, f3, f4, f5 = (
+            features["f1"],
+            features["f2"],
+            features["f3"],
+            features["f4"],
+            features["f5"],
+        )
+
+        # Classification 
+        cls_out = self.classification_head(bottleneck)
+
+        #  Localization (FIXED)
+        loc = self.localization_head(bottleneck)
+
+        xc = torch.sigmoid(loc[:, 0]) * 224
+        yc = torch.sigmoid(loc[:, 1]) * 224
+        w = torch.relu(loc[:, 2])
+        h = torch.relu(loc[:, 3])
+
+        loc_out = torch.stack([xc, yc, w, h], dim=1)
+
+        #  Segmentation 
+        seg = self.up5(bottleneck)
+        if seg.shape[-2:] != f5.shape[-2:]:
+            seg = F.interpolate(seg, size=f5.shape[-2:], mode="bilinear", align_corners=False)
+        seg = torch.cat([seg, f5], dim=1)
+        seg = self.dec5(seg)
+
+        seg = self.up4(seg)
+        if seg.shape[-2:] != f4.shape[-2:]:
+            seg = F.interpolate(seg, size=f4.shape[-2:], mode="bilinear", align_corners=False)
+        seg = torch.cat([seg, f4], dim=1)
+        seg = self.dec4(seg)
+
+        seg = self.up3(seg)
+        if seg.shape[-2:] != f3.shape[-2:]:
+            seg = F.interpolate(seg, size=f3.shape[-2:], mode="bilinear", align_corners=False)
+        seg = torch.cat([seg, f3], dim=1)
+        seg = self.dec3(seg)
+
+        seg = self.up2(seg)
+        if seg.shape[-2:] != f2.shape[-2:]:
+            seg = F.interpolate(seg, size=f2.shape[-2:], mode="bilinear", align_corners=False)
+        seg = torch.cat([seg, f2], dim=1)
+        seg = self.dec2(seg)
+
+        seg = self.up1(seg)
+        if seg.shape[-2:] != f1.shape[-2:]:
+            seg = F.interpolate(seg, size=f1.shape[-2:], mode="bilinear", align_corners=False)
+        seg = torch.cat([seg, f1], dim=1)
+        seg = self.dec1(seg)
+
+        seg_out = self.final_seg(seg)
+
+        return {
+            "classification": cls_out,
+            "localization": loc_out,
+            "segmentation": seg_out,
+        }
