@@ -1,0 +1,15 @@
+
+# Dataset / large files
+data/
+datasets/
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
