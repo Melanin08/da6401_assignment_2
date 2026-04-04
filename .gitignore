@@ -1,12 +1,6 @@
-
-# Dataset / large files
-data/
-datasets/
-*.tar.gz
-
-# Python cache
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-
+wandb/
+data/oxford-iiit-pet/
+checkpoints/
+*.pth
