@@ -17,9 +17,10 @@ from models.multitask import MultiTaskPerceptionModel
 from losses.iou_loss import IoULoss
 
 
-# ARGUMENT PARSING
+
+# Parse command-line inputs
+
 def parse_args():
-    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Train visual perception models")
 
     parser.add_argument("--data_root", type=str, required=True)
@@ -35,46 +36,60 @@ def parse_args():
 
     return parser.parse_args()
 
-# DATA LOADING
+
+
+# Build train/validation data loaders
 
 def build_dataloaders(data_root, task, batch_size):
-    """Create train and validation dataloaders for given task."""
-    train_dataset = OxfordIIITPetDataset(root=data_root, split="train", task=task)
-    val_dataset = OxfordIIITPetDataset(root=data_root, split="val", task=task)
+    train_dataset = OxfordIIITPetDataset(
+        root=data_root,
+        split="train",
+        task=task,
+    )
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    val_dataset = OxfordIIITPetDataset(
+        root=data_root,
+        split="val",
+        task=task,
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+    )
 
     return train_loader, val_loader
 
 
-# MODEL + LOSS
+
+# Build model + loss for each task
 
 def build_model_and_loss(task, device):
-    """Initialize model and corresponding loss function."""
-
-    # -------- Classification --------
     if task == "classification":
         model = VGG11Classifier(num_classes=37).to(device)
         criterion = nn.CrossEntropyLoss()
 
-    # -------- Localization --------
     elif task == "localization":
         model = VGG11Localizer().to(device)
 
         mse_loss = nn.MSELoss()
         iou_loss = IoULoss()
 
-        # Combined loss: regression + IoU
+        # Required loss for localization
         def criterion(pred_boxes, target_boxes):
             return mse_loss(pred_boxes, target_boxes) + iou_loss(pred_boxes, target_boxes)
 
-    # -------- Segmentation --------
     elif task == "segmentation":
         model = VGG11UNet(num_classes=3).to(device)
         criterion = nn.CrossEntropyLoss()
 
-    # -------- Multi-task --------
     elif task == "multitask":
         model = MultiTaskPerceptionModel().to(device)
 
@@ -83,7 +98,7 @@ def build_model_and_loss(task, device):
         box_iou_loss = IoULoss()
         seg_loss_fn = nn.CrossEntropyLoss()
 
-        # Combined loss across all tasks
+        # Weighted multitask loss so localization MSE does not dominate
         def criterion(outputs, batch):
             cls_loss = cls_loss_fn(outputs["classification"], batch["label"])
             loc_loss = box_mse_loss(outputs["localization"], batch["bbox"]) + box_iou_loss(
@@ -98,115 +113,160 @@ def build_model_and_loss(task, device):
     return model, criterion
 
 
-# IOU METRIC (LOCALIZATION)
+
+# IoU metric for box evaluation
+# Boxes are [x_center, y_center, width, height]
 
 def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
-    """Compute IoU for bounding boxes."""
     pred_w = torch.clamp(pred_boxes[:, 2], min=0.0)
     pred_h = torch.clamp(pred_boxes[:, 3], min=0.0)
-
     target_w = torch.clamp(target_boxes[:, 2], min=0.0)
     target_h = torch.clamp(target_boxes[:, 3], min=0.0)
 
-    pred_x1 = pred_boxes[:, 0] - pred_w / 2
-    pred_y1 = pred_boxes[:, 1] - pred_h / 2
-    pred_x2 = pred_boxes[:, 0] + pred_w / 2
-    pred_y2 = pred_boxes[:, 1] + pred_h / 2
+    pred_x1 = pred_boxes[:, 0] - pred_w / 2.0
+    pred_y1 = pred_boxes[:, 1] - pred_h / 2.0
+    pred_x2 = pred_boxes[:, 0] + pred_w / 2.0
+    pred_y2 = pred_boxes[:, 1] + pred_h / 2.0
 
-    target_x1 = target_boxes[:, 0] - target_w / 2
-    target_y1 = target_boxes[:, 1] - target_h / 2
-    target_x2 = target_boxes[:, 0] + target_w / 2
-    target_y2 = target_boxes[:, 1] + target_h / 2
+    target_x1 = target_boxes[:, 0] - target_w / 2.0
+    target_y1 = target_boxes[:, 1] - target_h / 2.0
+    target_x2 = target_boxes[:, 0] + target_w / 2.0
+    target_y2 = target_boxes[:, 1] + target_h / 2.0
 
     inter_x1 = torch.max(pred_x1, target_x1)
     inter_y1 = torch.max(pred_y1, target_y1)
     inter_x2 = torch.min(pred_x2, target_x2)
     inter_y2 = torch.min(pred_y2, target_y2)
 
-    inter_area = torch.clamp(inter_x2 - inter_x1, 0) * torch.clamp(inter_y2 - inter_y1, 0)
-    union = (
-        (pred_x2 - pred_x1) * (pred_y2 - pred_y1)
-        + (target_x2 - target_x1) * (target_y2 - target_y1)
-        - inter_area
-        + eps
-    )
+    inter_w = torch.clamp(inter_x2 - inter_x1, min=0.0)
+    inter_h = torch.clamp(inter_y2 - inter_y1, min=0.0)
+    inter_area = inter_w * inter_h
 
-    return inter_area / union
+    pred_area = torch.clamp(pred_x2 - pred_x1, min=0.0) * torch.clamp(pred_y2 - pred_y1, min=0.0)
+    target_area = torch.clamp(target_x2 - target_x1, min=0.0) * torch.clamp(target_y2 - target_y1, min=0.0)
+
+    union_area = pred_area + target_area - inter_area + eps
+    return inter_area / union_area
 
 
-# TRAIN FUNCTION
 
-def train_one_epoch(model, loader, optimizer, criterion, task, device):
-    """Run one training epoch."""
-    model.train()
+# Run one epoch
+# train=True  -> training mode
+# train=False -> validation mode
+
+def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True):
+    if train:
+        model.train()
+    else:
+        model.eval()
 
     total_loss = 0.0
-    total_correct, total_samples = 0, 0
-    total_pixels_correct, total_pixels = 0, 0
-    total_iou, total_iou_batches = 0.0, 0
 
-    for batch in loader:
-        images = batch["image"].to(device)
-        optimizer.zero_grad()
+    total_correct = 0
+    total_samples = 0
 
-        # ---- Classification ----
-        if task == "classification":
-            labels = batch["label"].to(device)
-            outputs = model(images)
-            loss = criterion(outputs, labels)
+    total_pixels_correct = 0
+    total_pixels = 0
 
-            preds = torch.argmax(outputs, dim=1)
-            total_correct += (preds == labels).sum().item()
-            total_samples += labels.size(0)
+    total_iou = 0.0
+    total_iou_batches = 0
 
-        # ---- Localization ----
-        elif task == "localization":
-            targets = batch["bbox"].to(device)
-            outputs = model(images)
-            loss = criterion(outputs, targets)
+    context = torch.enable_grad() if train else torch.no_grad()
 
-            total_iou += box_iou_xywh(outputs, targets).mean().item()
-            total_iou_batches += 1
+    with context:
+        for batch in loader:
+            images = batch["image"].to(device)
 
-        # ---- Segmentation ----
-        elif task == "segmentation":
-            masks = batch["mask"].to(device)
-            outputs = model(images)
-            loss = criterion(outputs, masks)
+            if train:
+                optimizer.zero_grad()
 
-            preds = torch.argmax(outputs, dim=1)
-            total_pixels_correct += (preds == masks).sum().item()
-            total_pixels += masks.numel()
+            # ----- Classification -----
+            if task == "classification":
+                labels = batch["label"].to(device)
 
-        # ---- Multitask ----
-        elif task == "multitask":
-            batch["label"] = batch["label"].to(device)
-            batch["bbox"] = batch["bbox"].to(device)
-            batch["mask"] = batch["mask"].to(device)
+                outputs = model(images)
+                loss = criterion(outputs, labels)
 
-            outputs = model(images)
-            loss = criterion(outputs, batch)
+                preds = torch.argmax(outputs, dim=1)
+                total_correct += (preds == labels).sum().item()
+                total_samples += labels.size(0)
 
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
+            # ----- Localization -----
+            elif task == "localization":
+                targets = batch["bbox"].to(device)
 
-    metrics = {"loss": total_loss / len(loader)}
+                outputs = model(images)
+                loss = criterion(outputs, targets)
+
+                total_iou += box_iou_xywh(outputs, targets).mean().item()
+                total_iou_batches += 1
+
+            # ----- Segmentation -----
+            elif task == "segmentation":
+                masks = batch["mask"].to(device)
+
+                outputs = model(images)
+                loss = criterion(outputs, masks)
+
+                preds = torch.argmax(outputs, dim=1)
+                total_pixels_correct += (preds == masks).sum().item()
+                total_pixels += masks.numel()
+
+            # ----- Multitask -----
+            elif task == "multitask":
+                labels = batch["label"].to(device)
+                boxes = batch["bbox"].to(device)
+                masks = batch["mask"].to(device)
+
+                multitask_batch = {
+                    "label": labels,
+                    "bbox": boxes,
+                    "mask": masks,
+                }
+
+                outputs = model(images)
+                loss = criterion(outputs, multitask_batch)
+
+                cls_preds = torch.argmax(outputs["classification"], dim=1)
+                total_correct += (cls_preds == labels).sum().item()
+                total_samples += labels.size(0)
+
+                seg_preds = torch.argmax(outputs["segmentation"], dim=1)
+                total_pixels_correct += (seg_preds == masks).sum().item()
+                total_pixels += masks.numel()
+
+                total_iou += box_iou_xywh(outputs["localization"], boxes).mean().item()
+                total_iou_batches += 1
+
+            else:
+                raise ValueError("Invalid task")
+
+            if train:
+                loss.backward()
+                optimizer.step()
+
+            total_loss += loss.item()
+
+    metrics = {
+        "loss": total_loss / len(loader),
+    }
 
     if total_samples > 0:
         metrics["accuracy"] = total_correct / total_samples
+
     if total_pixels > 0:
         metrics["pixel_acc"] = total_pixels_correct / total_pixels
+
     if total_iou_batches > 0:
         metrics["iou"] = total_iou / total_iou_batches
 
     return metrics
 
 
-# CHECKPOINT NAME FIX
+
+# Required checkpoint filenames
 
 def get_save_path(task):
-    """Return correct filename required by autograder."""
     if task == "classification":
         return "checkpoints/classifier.pth"
     if task == "localization":
@@ -218,9 +278,9 @@ def get_save_path(task):
     raise ValueError("Invalid task")
 
 
-# =========================
-# MAIN
-# =========================
+
+# Main training entry
+
 def main():
     args = parse_args()
 
@@ -240,26 +300,78 @@ def main():
     save_path = get_save_path(args.task)
 
     for epoch in range(args.epochs):
-        train_metrics = train_one_epoch(model, train_loader, optimizer, criterion, args.task, device)
+        train_metrics = run_one_epoch(
+            model, train_loader, optimizer, criterion, args.task, device, train=True
+        )
+        val_metrics = run_one_epoch(
+            model, val_loader, optimizer, criterion, args.task, device, train=False
+        )
 
-        print(f"Epoch [{epoch+1}/{args.epochs}] | Loss: {train_metrics['loss']:.4f}")
+        print(f"Epoch [{epoch + 1}/{args.epochs}]")
 
-        wandb.log({
+        if args.task == "classification":
+            print(
+                f"Train Loss: {train_metrics['loss']:.4f} | Train Acc: {train_metrics['accuracy']:.4f} | "
+                f"Val Loss: {val_metrics['loss']:.4f} | Val Acc: {val_metrics['accuracy']:.4f}"
+            )
+
+        elif args.task == "localization":
+            print(
+                f"Train Loss: {train_metrics['loss']:.4f} | Train IoU: {train_metrics['iou']:.4f} | "
+                f"Val Loss: {val_metrics['loss']:.4f} | Val IoU: {val_metrics['iou']:.4f}"
+            )
+
+        elif args.task == "segmentation":
+            print(
+                f"Train Loss: {train_metrics['loss']:.4f} | Train Pixel Acc: {train_metrics['pixel_acc']:.4f} | "
+                f"Val Loss: {val_metrics['loss']:.4f} | Val Pixel Acc: {val_metrics['pixel_acc']:.4f}"
+            )
+
+        elif args.task == "multitask":
+            print(
+                f"Train Loss: {train_metrics['loss']:.4f} | "
+                f"Train Cls Acc: {train_metrics['accuracy']:.4f} | "
+                f"Train IoU: {train_metrics['iou']:.4f} | "
+                f"Train Pixel Acc: {train_metrics['pixel_acc']:.4f} | "
+                f"Val Loss: {val_metrics['loss']:.4f} | "
+                f"Val Cls Acc: {val_metrics['accuracy']:.4f} | "
+                f"Val IoU: {val_metrics['iou']:.4f} | "
+                f"Val Pixel Acc: {val_metrics['pixel_acc']:.4f}"
+            )
+
+        wandb_log = {
             "epoch": epoch + 1,
-            "train_loss": train_metrics["loss"]
-        })
+            "train_loss": train_metrics["loss"],
+            "val_loss": val_metrics["loss"],
+        }
 
-        # Save best model
-        if train_metrics["loss"] < best_val_loss:
-            best_val_loss = train_metrics["loss"]
+        if "accuracy" in train_metrics:
+            wandb_log["train_accuracy"] = train_metrics["accuracy"]
+            wandb_log["val_accuracy"] = val_metrics["accuracy"]
 
-            torch.save({
-                "state_dict": model.state_dict(),
-                "epoch": epoch + 1,
-                "best_metric": best_val_loss,
-            }, save_path)
+        if "pixel_acc" in train_metrics:
+            wandb_log["train_pixel_acc"] = train_metrics["pixel_acc"]
+            wandb_log["val_pixel_acc"] = val_metrics["pixel_acc"]
 
-    print("Saved to:", save_path)
+        if "iou" in train_metrics:
+            wandb_log["train_iou"] = train_metrics["iou"]
+            wandb_log["val_iou"] = val_metrics["iou"]
+
+        wandb.log(wandb_log)
+
+        if val_metrics["loss"] < best_val_loss:
+            best_val_loss = val_metrics["loss"]
+            torch.save(
+                {
+                    "state_dict": model.state_dict(),
+                    "epoch": epoch + 1,
+                    "best_metric": best_val_loss,
+                },
+                save_path,
+            )
+
+    print(f"\nTraining finished. Best validation loss: {best_val_loss:.4f}")
+    print(f"Best checkpoint saved to: {save_path}")
 
 
 if __name__ == "__main__":
