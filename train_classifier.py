@@ -150,10 +150,13 @@ def main():
                 "best_metric": val_acc
             }, "checkpoints/classifier.pth")
 
-        # OPTIONAL: SAVE LAST 
-        torch.save({
-            "state_dict": model.state_dict()
-        }, "checkpoints/classifier_last.pth")
+    # OPTIONAL: SAVE LAST MODEL once after training to avoid partial write issues.
+    last_checkpoint_path = os.path.join("checkpoints", "classifier_last.pth")
+    tmp_checkpoint_path = last_checkpoint_path + ".tmp"
+    torch.save({
+        "state_dict": model.state_dict()
+    }, tmp_checkpoint_path)
+    os.replace(tmp_checkpoint_path, last_checkpoint_path)
 
     print(f"\nTraining Finished. Best Val Acc: {best_acc:.4f}")
 

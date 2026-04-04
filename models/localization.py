@@ -17,30 +17,28 @@ class VGG11Localizer(nn.Module):
         self.regressor = nn.Sequential(
             nn.AdaptiveAvgPool2d((7, 7)),
             nn.Flatten(),
-            nn.Linear(512 * 7 * 7, 4096),
+
+            nn.Linear(512 * 7 * 7, 512),   # ✅ reduced
             nn.ReLU(inplace=True),
             CustomDropout(dropout_p),
-            nn.Linear(4096, 1024),
+
+            nn.Linear(512, 128),           # ✅ reduced
             nn.ReLU(inplace=True),
             CustomDropout(dropout_p),
-            nn.Linear(1024, 4),  # [xc, yc, w, h]
+
+            nn.Linear(128, 4),             # ✅ correct output
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # Feature extraction
         x = self.encoder(x)
-
-        # Regression head
         x = self.regressor(x)
 
-        # Split outputs
         xc = torch.sigmoid(x[:, 0]) * 224
         yc = torch.sigmoid(x[:, 1]) * 224
 
         w = torch.relu(x[:, 2])
         h = torch.relu(x[:, 3])
 
-        # Combine
         x = torch.stack([xc, yc, w, h], dim=1)
 
         return x

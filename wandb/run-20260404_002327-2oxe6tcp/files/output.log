@@ -1,0 +1,13 @@
+Epoch [1/10] Train Loss: 3.6411 | Train Acc: 0.0257 | Val Loss: 3.6060 | Val Acc: 0.0353
+Traceback (most recent call last):
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\serialization.py", line 1004, in save
+    _save(
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\serialization.py", line 1313, in _save
+    zip_file.write_record(name, storage, num_bytes)
+RuntimeError: ios_base::badbit set: iostream stream error
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Admin\Documents\da6401_assignment_2\train_classifier.py", line 162, in <module>
+    main()
