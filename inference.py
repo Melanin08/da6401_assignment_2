@@ -27,42 +27,32 @@ def parse_args():
 
     return parser.parse_args()
 
-# LOAD MODEL 
+# LOAD MODEL
 
 def load_model(task, model_path, device):
 
     if task == "classification":
         model = VGG11Classifier(num_classes=37)
 
-        checkpoint = torch.load(model_path, map_location=device)
-        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-            model.load_state_dict(checkpoint["state_dict"])
-        else:
-            model.load_state_dict(checkpoint)
-
     elif task == "localization":
         model = VGG11Localizer()
-
-        checkpoint = torch.load(model_path, map_location=device)
-        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-            model.load_state_dict(checkpoint["state_dict"])
-        else:
-            model.load_state_dict(checkpoint)
 
     elif task == "segmentation":
         model = VGG11UNet()
 
-        checkpoint = torch.load(model_path, map_location=device)
-        if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-            model.load_state_dict(checkpoint["state_dict"])
-        else:
-            model.load_state_dict(checkpoint)
-
     elif task == "multitask":
-        model = MultiTaskPerceptionModel(load_pretrained=True)
+        model = MultiTaskPerceptionModel(load_pretrained=False)
 
     else:
         raise ValueError("Invalid task")
+
+    # 🔥 Unified checkpoint loading (VERY IMPORTANT)
+    checkpoint = torch.load(model_path, map_location=device)
+
+    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["state_dict"], strict=False)
+    else:
+        model.load_state_dict(checkpoint, strict=False)
 
     model.to(device)
     model.eval()
@@ -89,7 +79,6 @@ def evaluate_classification(model, loader, device):
     acc = correct / total
     print(f"Classification Accuracy: {acc:.4f}")
 
-
 # LOCALIZATION
 
 def evaluate_localization(model, loader, device):
@@ -101,12 +90,12 @@ def evaluate_localization(model, loader, device):
             targets = batch["bbox"].to(device)
 
             preds = model(images)
-            loss = torch.mean((preds - targets) ** 2)
 
+            # Simple MSE evaluation
+            loss = torch.mean((preds - targets) ** 2)
             total_loss += loss.item()
 
     print(f"Localization MSE: {total_loss / len(loader):.4f}")
-
 
 # SEGMENTATION
 
@@ -171,6 +160,7 @@ def evaluate_multitask(model, loader, device):
     print(f"Multitask Classification Acc: {cls_acc:.4f}")
     print(f"Multitask Localization MSE: {loc_loss:.4f}")
     print(f"Multitask Segmentation Acc: {seg_acc:.4f}")
+
 
 # MAIN
 
