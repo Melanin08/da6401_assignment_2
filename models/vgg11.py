@@ -36,31 +36,31 @@ class VGG11(nn.Module):
         super().__init__()
 
         # Block 1
-        self.block1 = ConvBlock(in_channels, 64, dropout_p=0.1)
+        self.block1 = ConvBlock(in_channels, 64, dropout_p=0.0)
         self.pool1 = nn.MaxPool2d(2, 2)
 
         # Block 2
-        self.block2 = ConvBlock(64, 128, dropout_p=0.1)
+        self.block2 = ConvBlock(64, 128, dropout_p=0.0)
         self.pool2 = nn.MaxPool2d(2, 2)
 
         # Block 3
         self.block3 = nn.Sequential(
             ConvBlock(128, 256),
-            ConvBlock(256, 256, dropout_p=0.2),
+            ConvBlock(256, 256, dropout_p=0.0),
         )
         self.pool3 = nn.MaxPool2d(2, 2)
 
         # Block 4
         self.block4 = nn.Sequential(
             ConvBlock(256, 512),
-            ConvBlock(512, 512, dropout_p=0.2),
+            ConvBlock(512, 512, dropout_p=0.0),
         )
         self.pool4 = nn.MaxPool2d(2, 2)
 
         # Block 5
         self.block5 = nn.Sequential(
             ConvBlock(512, 512),
-            ConvBlock(512, 512, dropout_p=0.3),
+            ConvBlock(512, 512, dropout_p=0.0),
         )
         self.pool5 = nn.MaxPool2d(2, 2)
 
