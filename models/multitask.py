@@ -15,19 +15,28 @@ class DoubleConv(nn.Module):
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
         self.block = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False),
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.block(x)
 
 
 class MultiTaskPerceptionModel(nn.Module):
+    """
+    Unified multi-task model with:
+    - classification head
+    - localization head
+    - segmentation head
+
+    It can initialize from saved checkpoints using relative paths.
+    """
+
     def __init__(
         self,
         num_breeds: int = 37,
@@ -41,66 +50,71 @@ class MultiTaskPerceptionModel(nn.Module):
     ):
         super().__init__()
 
-        # Backbone
+        # Shared backbone
         self.backbone = VGG11(in_channels)
 
         # Classification head
         self.classification_head = nn.Sequential(
             nn.AdaptiveAvgPool2d((7, 7)),
             nn.Flatten(),
+
             nn.Linear(512 * 7 * 7, 4096),
             nn.ReLU(inplace=True),
             CustomDropout(dropout_p),
+
             nn.Linear(4096, 4096),
             nn.ReLU(inplace=True),
             CustomDropout(dropout_p),
+
             nn.Linear(4096, num_breeds),
         )
 
         # Localization head
+        # Must exactly match localization.py for checkpoint loading
         self.localization_head = nn.Sequential(
             nn.AdaptiveAvgPool2d((7, 7)),
             nn.Flatten(),
+
             nn.Linear(512 * 7 * 7, 4096),
             nn.ReLU(inplace=True),
             CustomDropout(dropout_p),
+
             nn.Linear(4096, 1024),
             nn.ReLU(inplace=True),
             CustomDropout(dropout_p),
+
             nn.Linear(1024, 4),
         )
 
         # Segmentation decoder
-        self.up5 = nn.ConvTranspose2d(512, 512, 2, 2)
+        self.up5 = nn.ConvTranspose2d(512, 512, kernel_size=2, stride=2)
         self.dec5 = DoubleConv(1024, 512)
 
-        self.up4 = nn.ConvTranspose2d(512, 512, 2, 2)
+        self.up4 = nn.ConvTranspose2d(512, 512, kernel_size=2, stride=2)
         self.dec4 = DoubleConv(1024, 512)
 
-        self.up3 = nn.ConvTranspose2d(512, 256, 2, 2)
+        self.up3 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.dec3 = DoubleConv(512, 256)
 
-        self.up2 = nn.ConvTranspose2d(256, 128, 2, 2)
+        self.up2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
         self.dec2 = DoubleConv(256, 128)
 
-        self.up1 = nn.ConvTranspose2d(128, 64, 2, 2)
+        self.up1 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.dec1 = DoubleConv(128, 64)
 
         self.final_seg = nn.Conv2d(64, seg_classes, kernel_size=1)
 
         if load_pretrained:
-            self._load_pretrained_weights(
-                classifier_path, localizer_path, unet_path
-            )
-
-    # LOAD WEIGHTS  #
+            self._load_pretrained_weights(classifier_path, localizer_path, unet_path)
 
     def _extract_state_dict(self, checkpoint):
+        """Extract raw state_dict from either checkpoint format."""
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             return checkpoint["state_dict"]
         return checkpoint
 
     def _load_matching_prefix(self, source_state, target_state, source_prefix, target_prefix):
+        """Load matching keys after prefix replacement."""
         for key, value in source_state.items():
             if key.startswith(source_prefix):
                 new_key = target_prefix + key[len(source_prefix):]
@@ -109,9 +123,10 @@ class MultiTaskPerceptionModel(nn.Module):
         return target_state
 
     def _load_pretrained_weights(self, classifier_path, localizer_path, unet_path):
+        """Load weights from task-specific checkpoints."""
         state = self.state_dict()
 
-        # CLASSIFIER
+        # Classifier checkpoint
         if classifier_path and os.path.exists(classifier_path):
             ckpt = torch.load(classifier_path, map_location="cpu")
             src = self._extract_state_dict(ckpt)
@@ -119,7 +134,7 @@ class MultiTaskPerceptionModel(nn.Module):
             state = self._load_matching_prefix(src, state, "encoder.", "backbone.")
             state = self._load_matching_prefix(src, state, "classifier.", "classification_head.")
 
-        # LOCALIZER
+        # Localizer checkpoint
         if localizer_path and os.path.exists(localizer_path):
             ckpt = torch.load(localizer_path, map_location="cpu")
             src = self._extract_state_dict(ckpt)
@@ -127,45 +142,47 @@ class MultiTaskPerceptionModel(nn.Module):
             state = self._load_matching_prefix(src, state, "encoder.", "backbone.")
             state = self._load_matching_prefix(src, state, "regressor.", "localization_head.")
 
-        # UNET
+        # U-Net checkpoint
         if unet_path and os.path.exists(unet_path):
             ckpt = torch.load(unet_path, map_location="cpu")
             src = self._extract_state_dict(ckpt)
 
             state = self._load_matching_prefix(src, state, "encoder.", "backbone.")
 
-            for name in ["up5","dec5","up4","dec4","up3","dec3","up2","dec2","up1","dec1","final_seg"]:
+            for name in [
+                "up5", "dec5",
+                "up4", "dec4",
+                "up3", "dec3",
+                "up2", "dec2",
+                "up1", "dec1",
+                "final_seg",
+            ]:
                 state = self._load_matching_prefix(src, state, f"{name}.", f"{name}.")
 
         self.load_state_dict(state, strict=False)
 
-    # FORWARD  #
-
     def forward(self, x: torch.Tensor):
+        """Single forward pass for all three tasks."""
         bottleneck, features = self.backbone(x, return_features=True)
 
-        f1, f2, f3, f4, f5 = (
-            features["f1"],
-            features["f2"],
-            features["f3"],
-            features["f4"],
-            features["f5"],
-        )
+        f1 = features["f1"]
+        f2 = features["f2"]
+        f3 = features["f3"]
+        f4 = features["f4"]
+        f5 = features["f5"]
 
-        # Classification 
+        # Classification
         cls_out = self.classification_head(bottleneck)
 
-        #  Localization (FIXED)
+        # Localization
         loc = self.localization_head(bottleneck)
-
-        xc = torch.sigmoid(loc[:, 0]) * 224
-        yc = torch.sigmoid(loc[:, 1]) * 224
+        xc = torch.sigmoid(loc[:, 0]) * 224.0
+        yc = torch.sigmoid(loc[:, 1]) * 224.0
         w = torch.relu(loc[:, 2])
         h = torch.relu(loc[:, 3])
-
         loc_out = torch.stack([xc, yc, w, h], dim=1)
 
-        #  Segmentation 
+        # Segmentation
         seg = self.up5(bottleneck)
         if seg.shape[-2:] != f5.shape[-2:]:
             seg = F.interpolate(seg, size=f5.shape[-2:], mode="bilinear", align_corners=False)
