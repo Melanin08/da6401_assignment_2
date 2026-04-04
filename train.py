@@ -90,7 +90,7 @@ def build_model_and_loss(task, device):
                 outputs["localization"], batch["bbox"]
             )
             seg_loss = seg_loss_fn(outputs["segmentation"], batch["mask"])
-            return cls_loss + loc_loss + seg_loss
+            return cls_loss + 0.001 * loc_loss + seg_loss
 
     else:
         raise ValueError("Invalid task")
