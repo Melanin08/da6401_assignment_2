@@ -22,7 +22,7 @@ class OxfordIIITPetDataset(Dataset):
 
     def __init__(
         self,
-        root="data/pet",
+        root="data/oxford-iiit-pet",
         split="train",
         image_size=224,
         val_ratio=0.1,
@@ -60,11 +60,12 @@ class OxfordIIITPetDataset(Dataset):
         self.samples = self._build_samples()
 
     def _check_paths(self):
-        """Make sure the required dataset files/folders exist."""
+        """Make sure the required dataset files and folders exist."""
         required_paths = [
             self.images_dir,
             self.ann_dir,
             self.trimaps_dir,
+            self.xml_dir,
             self.trainval_file,
             self.test_file,
         ]
@@ -82,12 +83,7 @@ class OxfordIIITPetDataset(Dataset):
             )
 
     def _read_split_file(self, filepath):
-        """
-        Read official split file.
-
-        Each valid line usually has:
-        image_id class_id species breed_id
-        """
+        """Read official split file."""
         entries = []
 
         with open(filepath, "r", encoding="utf-8") as f:
@@ -101,11 +97,11 @@ class OxfordIIITPetDataset(Dataset):
                 if len(parts) < 2:
                     continue
 
-                image_id = parts[0].strip()
-                label = int(parts[1]) - 1  # convert 1..37 -> 0..36
+                img_id = parts[0].strip()
+                label = int(parts[1]) - 1  # convert labels from 1..37 to 0..36
 
                 entries.append({
-                    "img_id": image_id,
+                    "img_id": img_id,
                     "label": label,
                 })
 
@@ -114,13 +110,13 @@ class OxfordIIITPetDataset(Dataset):
     def _split_train_val(self, entries):
         """Create deterministic train/val split from trainval entries."""
         n = len(entries)
-        indices = list(range(n))
+        indices = np.arange(n)
 
         rng = np.random.RandomState(self.seed)
         rng.shuffle(indices)
 
         val_size = int(n * self.val_ratio)
-        val_indices = set(indices[:val_size])
+        val_indices = set(indices[:val_size].tolist())
 
         train_entries = []
         val_entries = []
@@ -135,11 +131,11 @@ class OxfordIIITPetDataset(Dataset):
 
     def _parse_bbox_from_xml(self, img_id):
         """
-        Read bbox from XML.
+        Read bounding box from XML.
 
         Returns:
-            [x_center, y_center, width, height] in ORIGINAL IMAGE PIXELS
-            or None if XML is missing / invalid
+            [x_center, y_center, width, height] in original image pixels
+            or None if XML is missing.
         """
         xml_path = os.path.join(self.xml_dir, f"{img_id}.xml")
 
@@ -167,12 +163,12 @@ class OxfordIIITPetDataset(Dataset):
 
     def _build_samples(self):
         """
-        Build sample list based on split and task.
+        Build sample list for the selected split and task.
 
         For classification/segmentation:
             XML is not required.
         For localization/multitask:
-            valid bbox is required.
+            valid bounding box is required.
         """
         if self.split == "test":
             entries = self._read_split_file(self.test_file)
@@ -188,7 +184,7 @@ class OxfordIIITPetDataset(Dataset):
             label = entry["label"]
             bbox = self._parse_bbox_from_xml(img_id)
 
-            # Localization and multitask require bbox annotations.
+            # Localization and multitask must have bounding box annotations.
             if self.task in {"localization", "multitask"} and bbox is None:
                 continue
 
@@ -224,20 +220,22 @@ class OxfordIIITPetDataset(Dataset):
 
         orig_w, orig_h = image.size
 
-        # Resize image and mask to fixed input size.
+        # Resize image and mask to the fixed input size used by the network.
         image = image.resize((self.image_size, self.image_size))
         mask = mask.resize((self.image_size, self.image_size), resample=Image.NEAREST)
 
-        # Normalize image to [0, 1] and convert to [C, H, W].
+        # Normalize image: first to [0,1], then channel-wise normalization.
         image = np.array(image, dtype=np.float32) / 255.0
+        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
+        std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+        image = (image - mean) / std
         image = torch.from_numpy(image).permute(2, 0, 1)
 
-        # Convert trimap labels from {1, 2, 3} to {0, 1, 2}.
+        # Convert trimap labels from {1,2,3} to {0,1,2}.
         mask = np.array(mask, dtype=np.int64) - 1
         mask = torch.from_numpy(mask)
 
         # Convert bbox from original-image pixels to resized-image pixels.
-        # The required output format is still [x_center, y_center, width, height].
         if bbox is None:
             bbox = [0.0, 0.0, 0.0, 0.0]
         else:
