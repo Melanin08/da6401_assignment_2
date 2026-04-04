@@ -1,0 +1,37 @@
+Epoch [1/10] Train Loss: 3.6385 | Train Acc: 0.0308 | Val Loss: 3.6142 | Val Acc: 0.0190
+Traceback (most recent call last):
+  File "C:\Users\Admin\Documents\da6401_assignment_2\train_classifier.py", line 165, in <module>
+    main()
+  File "C:\Users\Admin\Documents\da6401_assignment_2\train_classifier.py", line 89, in main
+    outputs = model(images)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Admin\Documents\da6401_assignment_2\models\classification.py", line 32, in forward
+    x = self.encoder(x)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Admin\Documents\da6401_assignment_2\models\vgg11.py", line 69, in forward
+    f1 = self.block1(x)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Admin\Documents\da6401_assignment_2\models\vgg11.py", line 27, in forward
+    return self.block(x)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\container.py", line 253, in forward
+    input = module(input)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "C:\Users\Admin\AppData\Local\Programs\Python\Python310\lib\site-packages\torch\nn\modules\module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "C:\Users\Admin\Documents\da6401_assignment_2\models\layers.py", line 39, in forward
+    mask = (torch.rand_like(x) > self.p).float()
+KeyboardInterrupt
