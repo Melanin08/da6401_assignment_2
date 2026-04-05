@@ -4,6 +4,7 @@ matplotlib>=3.4.0
 pillow>=8.2.0
 torch>=1.8.0
 albumentations>=1.0.0
+gdown
 
 # Logging and experiment tracking
 wandb>=0.12.0
