@@ -13,11 +13,8 @@ class VGG11Localizer(nn.Module):
     def __init__(self, in_channels: int = 3, dropout_p: float = 0.5, use_batchnorm: bool = True):
         super().__init__()
 
-        # Shared VGG11 backbone
         self.encoder = VGG11(in_channels, use_batchnorm=use_batchnorm)
 
-        # Regression head for [x_center, y_center, width, height]
-        # in resized-image pixel space (224x224)
         self.regressor = nn.Sequential(
             nn.AdaptiveAvgPool2d((7, 7)),
             nn.Flatten(),
@@ -34,18 +31,15 @@ class VGG11Localizer(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Return bounding boxes [B, 4] in
-        (x_center, y_center, width, height) format.
-        Output is in 224x224 image pixel space.
-        """
         x = self.encoder(x)
         x = self.regressor(x)
 
-        xc = torch.sigmoid(x[:, 0]) * 224.0
-        yc = torch.sigmoid(x[:, 1]) * 224.0
-        w = torch.relu(x[:, 2])
-        h = torch.relu(x[:, 3])
+        x = torch.sigmoid(x)
 
-        x = torch.stack([xc, yc, w, h], dim=1)
-        return x
+        cx = x[:, 0] * 224.0
+        cy = x[:, 1] * 224.0
+        w  = x[:, 2] * 224.0
+        h  = x[:, 3] * 224.0
+
+        out = torch.stack([cx, cy, w, h], dim=1)
+        return out
