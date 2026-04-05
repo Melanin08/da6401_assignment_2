@@ -1,6 +1,7 @@
 """Unified multi-task model."""
 
 import os
+import gdown
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -33,8 +34,6 @@ class MultiTaskPerceptionModel(nn.Module):
     - classification head
     - localization head
     - segmentation head
-
-    It can initialize from saved checkpoints using relative paths.
     """
 
     def __init__(
@@ -49,6 +48,28 @@ class MultiTaskPerceptionModel(nn.Module):
         load_pretrained: bool = True,
     ):
         super().__init__()
+
+        # Download checkpoints from Google Drive if they are not present locally.
+        if not os.path.exists(classifier_path):
+            gdown.download(
+                id="https://drive.google.com/file/d/1OgDtzbogA_IkqjcH8vxyGZ1gFo9AJjvQ/view?usp=sharing",
+                output=classifier_path,
+                quiet=False,
+            )
+
+        if not os.path.exists(localizer_path):
+            gdown.download(
+                id="https://drive.google.com/file/d/1riCK94wNSMtMqfmFFHkT41s_sL3TZEZC/view?usp=sharing",
+                output=localizer_path,
+                quiet=False,
+            )
+
+        if not os.path.exists(unet_path):
+            gdown.download(
+                id="https://drive.google.com/file/d/1xTwaK0NxVMrhNoO_Th7IWRG1TuaWjEyl/view?usp=sharing",
+                output=unet_path,
+                quiet=False,
+            )
 
         # Shared backbone
         self.backbone = VGG11(in_channels)
@@ -70,7 +91,6 @@ class MultiTaskPerceptionModel(nn.Module):
         )
 
         # Localization head
-        # Must exactly match localization.py for checkpoint loading
         self.localization_head = nn.Sequential(
             nn.AdaptiveAvgPool2d((7, 7)),
             nn.Flatten(),
@@ -108,13 +128,11 @@ class MultiTaskPerceptionModel(nn.Module):
             self._load_pretrained_weights(classifier_path, localizer_path, unet_path)
 
     def _extract_state_dict(self, checkpoint):
-        """Extract raw state_dict from either checkpoint format."""
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
             return checkpoint["state_dict"]
         return checkpoint
 
     def _load_matching_prefix(self, source_state, target_state, source_prefix, target_prefix):
-        """Load matching keys after prefix replacement."""
         for key, value in source_state.items():
             if key.startswith(source_prefix):
                 new_key = target_prefix + key[len(source_prefix):]
@@ -123,7 +141,6 @@ class MultiTaskPerceptionModel(nn.Module):
         return target_state
 
     def _load_pretrained_weights(self, classifier_path, localizer_path, unet_path):
-        """Load weights from task-specific checkpoints."""
         state = self.state_dict()
 
         # Classifier checkpoint
@@ -162,7 +179,6 @@ class MultiTaskPerceptionModel(nn.Module):
         self.load_state_dict(state, strict=False)
 
     def forward(self, x: torch.Tensor):
-        """Single forward pass for all three tasks."""
         bottleneck, features = self.backbone(x, return_features=True)
 
         f1 = features["f1"]
