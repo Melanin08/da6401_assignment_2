@@ -42,6 +42,7 @@ class MultiTaskPerceptionModel(nn.Module):
         seg_classes: int = 3,
         in_channels: int = 3,
         dropout_p: float = 0.5,
+        use_batchnorm: bool = True,
         classifier_path: str = "checkpoints/classifier.pth",
         localizer_path: str = "checkpoints/localizer.pth",
         unet_path: str = "checkpoints/unet.pth",
@@ -72,7 +73,7 @@ class MultiTaskPerceptionModel(nn.Module):
             )
 
         # Shared backbone
-        self.backbone = VGG11(in_channels)
+        self.backbone = VGG11(in_channels, use_batchnorm=use_batchnorm)
 
         # Classification head
         self.classification_head = nn.Sequential(

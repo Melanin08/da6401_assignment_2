@@ -34,6 +34,34 @@ This repository is an instructional skeleton for building the complete visual pe
 - Gradescope offers an option to activate whichever submission you want to, and that submission will be used for evaluation. Under any circumstances, no requests to be raised to TAs to activate any of your prior submissions. It is the student's responsibility to do so(if required) before submission deadline.
 - Assignment2 discussion forum has been opened on moodle for any doubt clarification/discussion.   
 
+### Running experiments with BatchNorm on vs off
+Use the `--no_batchnorm` flag to compare activation distributions and convergence behavior.
+
+Example:
+
+```bash
+python train.py --data_root data/oxford-iiit-pet --task classification --epochs 20 --batch_size 32 --lr 1e-4 --seed 42
+python train.py --data_root data/oxford-iiit-pet --task classification --epochs 20 --batch_size 32 --lr 1e-4 --no_batchnorm --seed 42
+```
+
+Because the validation loader is deterministic, both runs use the same fixed validation input for activation histogram logging.
+
+The script logs:
+- training / validation loss and accuracy
+- fixed-input 3rd convolution activation histogram (`third_conv_activation_hist`)
+- activation mean and standard deviation (`third_conv_activation_mean`, `third_conv_activation_std`)
+- W&B run grouping under `classification_bn_comparison`
+
+For report section 2.1, compare:
+- `train_loss` and `val_loss` curves for convergence speed
+- `train_accuracy` / `val_accuracy`
+- `third_conv_activation_hist` for the same fixed input
+- which model run remains stable at higher learning rates
+
+A suggested analysis:
+- BatchNorm typically converges faster and reduces activation variance.
+- The run with BatchNorm should tolerate a larger learning rate before divergence, while the run without BatchNorm will usually require a lower stable learning rate.
+
 
 
 

@@ -10,10 +10,10 @@ from .layers import CustomDropout
 class VGG11Classifier(nn.Module):
     """VGG11-based classifier."""
 
-    def __init__(self, num_classes: int = 37, in_channels: int = 3, dropout_p: float = 0.5):
+    def __init__(self, num_classes: int = 37, in_channels: int = 3, dropout_p: float = 0.5, use_batchnorm: bool = True):
         super().__init__()
 
-        self.encoder = VGG11(in_channels)
+        self.encoder = VGG11(in_channels, use_batchnorm=use_batchnorm)
 
         # Classifier head follows the standard VGG design more closely.
         self.classifier = nn.Sequential(

@@ -30,9 +30,9 @@ class DoubleConv(nn.Module):
 class VGG11UNet(nn.Module):
     """U-Net style segmentation network."""
 
-    def __init__(self, num_classes: int = 3, in_channels: int = 3, dropout_p: float = 0.5):
+    def __init__(self, num_classes: int = 3, in_channels: int = 3, dropout_p: float = 0.5, use_batchnorm: bool = True):
         super().__init__()
-        self.encoder = VGG11(in_channels)
+        self.encoder = VGG11(in_channels, use_batchnorm=use_batchnorm)
 
         # Full symmetric decoder
         self.up5 = nn.ConvTranspose2d(512, 512, kernel_size=2, stride=2)

@@ -7,16 +7,19 @@ from .layers import CustomDropout
 
 
 class ConvBlock(nn.Module):
-    """Single VGG-style conv block with BatchNorm and ReLU."""
+    """Single VGG-style conv block with optional BatchNorm and ReLU."""
 
-    def __init__(self, in_channels: int, out_channels: int, dropout_p: float = 0.0):
+    def __init__(self, in_channels: int, out_channels: int, dropout_p: float = 0.0, use_batchnorm: bool = True):
         super().__init__()
 
         layers = [
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
         ]
+
+        if use_batchnorm:
+            layers.append(nn.BatchNorm2d(out_channels))
+
+        layers.append(nn.ReLU(inplace=True))
 
         if dropout_p > 0:
             layers.append(CustomDropout(dropout_p))
@@ -30,18 +33,18 @@ class ConvBlock(nn.Module):
 class VGG11(nn.Module):
     """VGG11 backbone with optional intermediate feature returns."""
 
-    def __init__(self, in_channels: int = 3):
+    def __init__(self, in_channels: int = 3, use_batchnorm: bool = True):
         super().__init__()
 
-        self.block1 = ConvBlock(in_channels, 64, dropout_p=0.0)
+        self.block1 = ConvBlock(in_channels, 64, dropout_p=0.0, use_batchnorm=use_batchnorm)
         self.pool1 = nn.MaxPool2d(2, 2)
 
-        self.block2 = ConvBlock(64, 128, dropout_p=0.0)
+        self.block2 = ConvBlock(64, 128, dropout_p=0.0, use_batchnorm=use_batchnorm)
         self.pool2 = nn.MaxPool2d(2, 2)
 
         self.block3 = nn.Sequential(
-            ConvBlock(128, 256, dropout_p=0.0),
-            ConvBlock(256, 256, dropout_p=0.1),
+            ConvBlock(128, 256, dropout_p=0.0, use_batchnorm=use_batchnorm),
+            ConvBlock(256, 256, dropout_p=0.1, use_batchnorm=use_batchnorm),
         )
         self.pool3 = nn.MaxPool2d(2, 2)
 

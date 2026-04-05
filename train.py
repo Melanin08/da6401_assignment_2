@@ -2,7 +2,9 @@
 
 import argparse
 import os
+import random
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -33,6 +35,14 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible experiments")
+    parser.add_argument(
+        "--no_batchnorm",
+        action="store_false",
+        dest="batchnorm",
+        help="Disable BatchNorm layers in the backbone",
+    )
+    parser.set_defaults(batchnorm=True)
 
     return parser.parse_args()
 
@@ -71,13 +81,13 @@ def build_dataloaders(data_root, task, batch_size):
 
 # Build model + loss for each task
 
-def build_model_and_loss(task, device):
+def build_model_and_loss(task, device, use_batchnorm=True):
     if task == "classification":
-        model = VGG11Classifier(num_classes=37).to(device)
+        model = VGG11Classifier(num_classes=37, use_batchnorm=use_batchnorm).to(device)
         criterion = nn.CrossEntropyLoss()
 
     elif task == "localization":
-        model = VGG11Localizer().to(device)
+        model = VGG11Localizer(use_batchnorm=use_batchnorm).to(device)
 
         mse_loss = nn.MSELoss()
         iou_loss = IoULoss()
@@ -87,11 +97,11 @@ def build_model_and_loss(task, device):
             return mse_loss(pred_boxes, target_boxes) + iou_loss(pred_boxes, target_boxes)
 
     elif task == "segmentation":
-        model = VGG11UNet(num_classes=3).to(device)
+        model = VGG11UNet(num_classes=3, use_batchnorm=use_batchnorm).to(device)
         criterion = nn.CrossEntropyLoss()
 
     elif task == "multitask":
-        model = MultiTaskPerceptionModel().to(device)
+        model = MultiTaskPerceptionModel(use_batchnorm=use_batchnorm).to(device)
 
         cls_loss_fn = nn.CrossEntropyLoss()
         box_mse_loss = nn.MSELoss()
@@ -263,6 +273,37 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
     return metrics
 
 
+def register_third_conv_hook(model, activation_container):
+    if not hasattr(model, "encoder"):
+        return None
+
+    def hook(module, inp, out):
+        activation_container["third_conv"] = out.detach().cpu()
+
+    return model.encoder.block3[0].register_forward_hook(hook)
+
+
+def capture_third_conv_activation(model, fixed_images):
+    activations = {}
+    handle = register_third_conv_hook(model, activations)
+
+    model.eval()
+    with torch.no_grad():
+        _ = model(fixed_images)
+
+    if handle is not None:
+        handle.remove()
+
+    if "third_conv" not in activations:
+        return {}
+
+    act = activations["third_conv"].cpu().numpy()
+    return {
+        "third_conv_activation_hist": wandb.Histogram(act),
+        "third_conv_activation_mean": act.mean().item() if hasattr(act, "mean") else float(act.mean()),
+        "third_conv_activation_std": act.std().item() if hasattr(act, "std") else float(act.std()),
+    }
+
 
 # Required checkpoint filenames
 
@@ -284,17 +325,38 @@ def get_save_path(task):
 def main():
     args = parse_args()
 
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
     train_loader, val_loader = build_dataloaders(args.data_root, args.task, args.batch_size)
-    model, criterion = build_model_and_loss(args.task, device)
+    model, criterion = build_model_and_loss(args.task, device, use_batchnorm=args.batchnorm)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     os.makedirs("checkpoints", exist_ok=True)
 
-    wandb.init(project="da6401_assignment_2", name=f"{args.task}_run")
+    fixed_batch = next(iter(val_loader))
+    fixed_images = fixed_batch["image"].to(device)
+
+    wandb.init(
+        project="da6401_assignment_2",
+        name=f"{args.task}_bn_{'on' if args.batchnorm else 'off'}_lr_{args.lr}",
+        group=f"{args.task}_bn_comparison",
+        config={
+            "task": args.task,
+            "batch_size": args.batch_size,
+            "lr": args.lr,
+            "epochs": args.epochs,
+            "batchnorm": args.batchnorm,
+            "seed": args.seed,
+        },
+    )
+    wandb.watch(model, log="all", log_freq=100)
 
     best_val_loss = float("inf")
     save_path = get_save_path(args.task)
@@ -356,6 +418,9 @@ def main():
         if "iou" in train_metrics:
             wandb_log["train_iou"] = train_metrics["iou"]
             wandb_log["val_iou"] = val_metrics["iou"]
+
+        activation_logs = capture_third_conv_activation(model, fixed_images)
+        wandb_log.update(activation_logs)
 
         wandb.log(wandb_log)
 

@@ -10,11 +10,11 @@ from .layers import CustomDropout
 class VGG11Localizer(nn.Module):
     """VGG11-based localizer."""
 
-    def __init__(self, in_channels: int = 3, dropout_p: float = 0.5):
+    def __init__(self, in_channels: int = 3, dropout_p: float = 0.5, use_batchnorm: bool = True):
         super().__init__()
 
         # Shared VGG11 backbone
-        self.encoder = VGG11(in_channels)
+        self.encoder = VGG11(in_channels, use_batchnorm=use_batchnorm)
 
         # Regression head for [x_center, y_center, width, height]
         # in resized-image pixel space (224x224)
