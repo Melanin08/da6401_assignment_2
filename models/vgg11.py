@@ -86,3 +86,6 @@ class VGG11(nn.Module):
             }
 
         return bottleneck
+
+#rename
+VGG11Encoder = VGG11
