@@ -25,21 +25,21 @@ class MultiTaskPerceptionModel(torch.nn.Module):
 
         if not os.path.exists(classifier_path):
             gdown.download(
-                id="1qSn6RTAH2osnz4R_jvlopLsd_6TPyPJe",
+                id="12r_HhRiFTTItrldLK1wXY8BDc5R5q1xa",
                 output=classifier_path,
                 quiet=False
             )
 
         if not os.path.exists(localizer_path):
             gdown.download(
-                id="1DOshGCxs3-EpncW8haUgX5VhCR7Ij59-",
+                id="1BwaJ59URfEwOWAnCo94X6xkbJlEZ5-Lx",
                 output=localizer_path,
                 quiet=False
             )
 
         if not os.path.exists(unet_path):
             gdown.download(
-                id="1Hrx28L_yrD04AUsP-DsnMxG039uyFBTN",
+                id="1D4Fu4-YnbkCjjD3-PbSFzA6XW37EF7U2",
                 output=unet_path,
                 quiet=False
             )
