@@ -19,9 +19,7 @@ from models.multitask import MultiTaskPerceptionModel
 from losses.iou_loss import IoULoss
 
 
-
 # Parse command-line inputs
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Train visual perception models")
 
@@ -35,6 +33,7 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--dropout_p", type=float, default=0.5, help="Dropout probability for classification")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible experiments")
     parser.add_argument(
         "--no_batchnorm",
@@ -47,9 +46,7 @@ def parse_args():
     return parser.parse_args()
 
 
-
 # Build train/validation data loaders
-
 def build_dataloaders(data_root, task, batch_size):
     train_dataset = OxfordIIITPetDataset(
         root=data_root,
@@ -78,12 +75,14 @@ def build_dataloaders(data_root, task, batch_size):
     return train_loader, val_loader
 
 
-
 # Build model + loss for each task
-
-def build_model_and_loss(task, device, use_batchnorm=True):
+def build_model_and_loss(task, device, use_batchnorm=True, dropout_p=0.5):
     if task == "classification":
-        model = VGG11Classifier(num_classes=37, use_batchnorm=use_batchnorm).to(device)
+        model = VGG11Classifier(
+            num_classes=37,
+            use_batchnorm=use_batchnorm,
+            dropout_p=dropout_p
+        ).to(device)
         criterion = nn.CrossEntropyLoss()
 
     elif task == "localization":
@@ -123,10 +122,8 @@ def build_model_and_loss(task, device, use_batchnorm=True):
     return model, criterion
 
 
-
 # IoU metric for box evaluation
 # Boxes are [x_center, y_center, width, height]
-
 def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
     pred_w = torch.clamp(pred_boxes[:, 2], min=0.0)
     pred_h = torch.clamp(pred_boxes[:, 3], min=0.0)
@@ -159,11 +156,9 @@ def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
     return inter_area / union_area
 
 
-
 # Run one epoch
 # train=True  -> training mode
 # train=False -> validation mode
-
 def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True):
     if train:
         model.train()
@@ -306,7 +301,6 @@ def capture_third_conv_activation(model, fixed_images):
 
 
 # Required checkpoint filenames
-
 def get_save_path(task):
     if task == "classification":
         return "checkpoints/classifier.pth"
@@ -319,9 +313,7 @@ def get_save_path(task):
     raise ValueError("Invalid task")
 
 
-
 # Main training entry
-
 def main():
     args = parse_args()
 
@@ -334,7 +326,12 @@ def main():
     print("Using device:", device)
 
     train_loader, val_loader = build_dataloaders(args.data_root, args.task, args.batch_size)
-    model, criterion = build_model_and_loss(args.task, device, use_batchnorm=args.batchnorm)
+    model, criterion = build_model_and_loss(
+        args.task,
+        device,
+        use_batchnorm=args.batchnorm,
+        dropout_p=args.dropout_p
+    )
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
@@ -345,7 +342,7 @@ def main():
 
     wandb.init(
         project="da6401_assignment_2",
-        name=f"{args.task}_bn_{'on' if args.batchnorm else 'off'}_lr_{args.lr}",
+        name=f"{args.task}_bn_{'on' if args.batchnorm else 'off'}_dropout_{args.dropout_p}_lr_{args.lr}",
         group=f"{args.task}_bn_comparison",
         config={
             "task": args.task,
@@ -353,6 +350,7 @@ def main():
             "lr": args.lr,
             "epochs": args.epochs,
             "batchnorm": args.batchnorm,
+            "dropout_p": args.dropout_p,
             "seed": args.seed,
         },
     )
