@@ -10,7 +10,12 @@ from .layers import CustomDropout
 class VGG11Localizer(nn.Module):
     """VGG11-based localizer."""
 
-    def __init__(self, in_channels: int = 3, dropout_p: float = 0.5, use_batchnorm: bool = True):
+    def __init__(
+        self,
+        in_channels: int = 3,
+        dropout_p: float = 0.5,
+        use_batchnorm: bool = True,
+    ):
         super().__init__()
 
         self.encoder = VGG11(in_channels, use_batchnorm=use_batchnorm)
@@ -34,12 +39,12 @@ class VGG11Localizer(nn.Module):
         x = self.encoder(x)
         x = self.regressor(x)
 
+        # Convert raw outputs into valid image-space box values
         x = torch.sigmoid(x)
 
         cx = x[:, 0] * 224.0
         cy = x[:, 1] * 224.0
-        w  = x[:, 2] * 224.0
-        h  = x[:, 3] * 224.0
+        w = x[:, 2] * 224.0
+        h = x[:, 3] * 224.0
 
-        out = torch.stack([cx, cy, w, h], dim=1)
-        return out
+        return torch.stack([cx, cy, w, h], dim=1)
