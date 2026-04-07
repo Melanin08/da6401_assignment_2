@@ -19,6 +19,9 @@ from models.multitask import MultiTaskPerceptionModel
 from losses.iou_loss import IoULoss
 
 
+
+# Parse command-line inputs
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Train visual perception models")
 
@@ -43,6 +46,9 @@ def parse_args():
 
     return parser.parse_args()
 
+
+
+# Build train/validation data loaders
 
 def build_dataloaders(data_root, task, batch_size):
     train_dataset = OxfordIIITPetDataset(
@@ -72,6 +78,9 @@ def build_dataloaders(data_root, task, batch_size):
     return train_loader, val_loader
 
 
+
+# Build model + loss for each task
+
 def build_model_and_loss(task, device, use_batchnorm=True):
     if task == "classification":
         model = VGG11Classifier(num_classes=37, use_batchnorm=use_batchnorm).to(device)
@@ -80,24 +89,26 @@ def build_model_and_loss(task, device, use_batchnorm=True):
     elif task == "localization":
         model = VGG11Localizer(use_batchnorm=use_batchnorm).to(device)
 
-        reg_loss = nn.SmoothL1Loss(beta=1.0)
+        mse_loss = nn.MSELoss()
         iou_loss = IoULoss()
 
+        # Required loss for localization
         def criterion(pred_boxes, target_boxes):
-            return reg_loss(pred_boxes, target_boxes) + 2.0 * iou_loss(pred_boxes, target_boxes)
+            return mse_loss(pred_boxes, target_boxes) + iou_loss(pred_boxes, target_boxes)
 
     elif task == "segmentation":
         model = VGG11UNet(num_classes=3, use_batchnorm=use_batchnorm).to(device)
         criterion = nn.CrossEntropyLoss()
 
     elif task == "multitask":
-        model = MultiTaskPerceptionModel().to(device)
+        model = MultiTaskPerceptionModel(use_batchnorm=use_batchnorm).to(device)
 
         cls_loss_fn = nn.CrossEntropyLoss()
         box_mse_loss = nn.MSELoss()
         box_iou_loss = IoULoss()
         seg_loss_fn = nn.CrossEntropyLoss()
 
+        # Weighted multitask loss so localization MSE does not dominate
         def criterion(outputs, batch):
             cls_loss = cls_loss_fn(outputs["classification"], batch["label"])
             loc_loss = box_mse_loss(outputs["localization"], batch["bbox"]) + box_iou_loss(
@@ -111,6 +122,10 @@ def build_model_and_loss(task, device, use_batchnorm=True):
 
     return model, criterion
 
+
+
+# IoU metric for box evaluation
+# Boxes are [x_center, y_center, width, height]
 
 def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
     pred_w = torch.clamp(pred_boxes[:, 2], min=0.0)
@@ -144,6 +159,11 @@ def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
     return inter_area / union_area
 
 
+
+# Run one epoch
+# train=True  -> training mode
+# train=False -> validation mode
+
 def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True):
     if train:
         model.train()
@@ -170,6 +190,7 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
             if train:
                 optimizer.zero_grad()
 
+            # ----- Classification -----
             if task == "classification":
                 labels = batch["label"].to(device)
 
@@ -180,6 +201,7 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
                 total_correct += (preds == labels).sum().item()
                 total_samples += labels.size(0)
 
+            # ----- Localization -----
             elif task == "localization":
                 targets = batch["bbox"].to(device)
 
@@ -189,6 +211,7 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
                 total_iou += box_iou_xywh(outputs, targets).mean().item()
                 total_iou_batches += 1
 
+            # ----- Segmentation -----
             elif task == "segmentation":
                 masks = batch["mask"].to(device)
 
@@ -199,6 +222,7 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
                 total_pixels_correct += (preds == masks).sum().item()
                 total_pixels += masks.numel()
 
+            # ----- Multitask -----
             elif task == "multitask":
                 labels = batch["label"].to(device)
                 boxes = batch["bbox"].to(device)
@@ -281,6 +305,8 @@ def capture_third_conv_activation(model, fixed_images):
     }
 
 
+# Required checkpoint filenames
+
 def get_save_path(task):
     if task == "classification":
         return "checkpoints/classifier.pth"
@@ -292,6 +318,9 @@ def get_save_path(task):
         return "checkpoints/multitask.pth"
     raise ValueError("Invalid task")
 
+
+
+# Main training entry
 
 def main():
     args = parse_args()
@@ -330,7 +359,6 @@ def main():
     wandb.watch(model, log="all", log_freq=100)
 
     best_val_loss = float("inf")
-    best_val_iou = -1.0
     save_path = get_save_path(args.task)
 
     for epoch in range(args.epochs):
@@ -396,35 +424,18 @@ def main():
 
         wandb.log(wandb_log)
 
-        if args.task == "localization":
-            if val_metrics["iou"] > best_val_iou:
-                best_val_iou = val_metrics["iou"]
-                torch.save(
-                    {
-                        "state_dict": model.state_dict(),
-                        "epoch": epoch + 1,
-                        "best_metric": best_val_iou,
-                    },
-                    save_path,
-                )
-                print(f"Saved best localization checkpoint at epoch {epoch + 1} with Val IoU: {best_val_iou:.4f}")
-        else:
-            if val_metrics["loss"] < best_val_loss:
-                best_val_loss = val_metrics["loss"]
-                torch.save(
-                    {
-                        "state_dict": model.state_dict(),
-                        "epoch": epoch + 1,
-                        "best_metric": best_val_loss,
-                    },
-                    save_path,
-                )
+        if val_metrics["loss"] < best_val_loss:
+            best_val_loss = val_metrics["loss"]
+            torch.save(
+                {
+                    "state_dict": model.state_dict(),
+                    "epoch": epoch + 1,
+                    "best_metric": best_val_loss,
+                },
+                save_path,
+            )
 
-    if args.task == "localization":
-        print(f"\nTraining finished. Best validation IoU: {best_val_iou:.4f}")
-    else:
-        print(f"\nTraining finished. Best validation loss: {best_val_loss:.4f}")
-
+    print(f"\nTraining finished. Best validation loss: {best_val_loss:.4f}")
     print(f"Best checkpoint saved to: {save_path}")
 
 
