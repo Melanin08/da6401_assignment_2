@@ -15,6 +15,7 @@ wandb.init(project="da6401_assignment_2", name="feature_maps")
 
 
 # PATHS
+
 ckpt_path = "checkpoints/classifier.pth"
 img_path = "data/oxford-iiit-pet/images/beagle_1.jpg"
 
@@ -28,6 +29,7 @@ if not os.path.exists(img_path):
     raise FileNotFoundError(f"Image not found: {img_path}")
 
 
+
 # DEVICE
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -35,6 +37,7 @@ print("Using device:", device)
 
 
 # LOAD MODEL
+
 model = VGG11Classifier()
 
 checkpoint = torch.load(ckpt_path, map_location=device)
@@ -61,10 +64,6 @@ img_tensor = transform(img).unsqueeze(0).to(device)
 # HELPER FUNCTIONS
 
 def get_first_conv(module):
-    """
-    Returns the first Conv2d found inside a module.
-    Works for custom blocks and Sequential blocks.
-    """
     for layer in module.modules():
         if isinstance(layer, nn.Conv2d):
             return layer
@@ -72,9 +71,6 @@ def get_first_conv(module):
 
 
 def get_last_conv(module):
-    """
-    Returns the last Conv2d found inside a module.
-    """
     last_conv = None
     for layer in module.modules():
         if isinstance(layer, nn.Conv2d):
@@ -82,6 +78,7 @@ def get_last_conv(module):
     if last_conv is None:
         raise ValueError("No Conv2d layer found in module")
     return last_conv
+
 
 # HOOK STORAGE
 
@@ -103,10 +100,7 @@ def hook_last(module, input, output):
 
 # ATTACH HOOKS
 
-# First conv layer from block1
 first_conv = get_first_conv(model.encoder.block1)
-
-# Last conv layer before final pooling from block5
 last_conv = get_last_conv(model.encoder.block5)
 
 h1 = first_conv.register_forward_hook(hook_first)
@@ -122,8 +116,9 @@ h1.remove()
 h2.remove()
 
 
-# PLOT + LOG
-def plot_and_log(feature_maps, title):
+# FUNCTION TO SAVE FEATURE MAP GRID
+
+def save_feature_map_grid(feature_maps, title):
     if len(feature_maps) == 0:
         raise ValueError(f"No feature maps captured for {title}")
 
@@ -141,15 +136,30 @@ def plot_and_log(feature_maps, title):
 
     filename = title.replace(" ", "_") + ".png"
     plt.savefig(filename, dpi=300, bbox_inches="tight")
-    wandb.log({title: wandb.Image(filename)})
-
-    plt.show()
     plt.close(fig)
 
+    return filename
 
-# RUN
 
-plot_and_log(first_layer_output, "First Layer Feature Maps")
-plot_and_log(last_layer_output, "Last Layer Feature Maps")
+# SAVE FEATURE MAPS
 
-print("Feature maps generated and logged to W&B successfully!")
+first_map_file = save_feature_map_grid(first_layer_output, "First Layer Feature Maps")
+last_map_file = save_feature_map_grid(last_layer_output, "Last Layer Feature Maps")
+
+
+# PREPARE ORIGINAL IMAGE FOR W&B
+
+img_display = img_tensor[0].detach().cpu().permute(1, 2, 0).numpy()
+img_display = (img_display - img_display.min()) / (img_display.max() - img_display.min() + 1e-8)
+
+
+# LOG TO W&B
+wandb.log({
+    "Original_Image": wandb.Image(img_display, caption="Original Input Image (224x224)"),
+    "First_Layer_Feature_Maps": wandb.Image(first_map_file, caption="First Layer Feature Maps"),
+    "Last_Layer_Feature_Maps": wandb.Image(last_map_file, caption="Last Layer Feature Maps")
+})
+
+print("Original image and feature maps generated and logged to W&B successfully!")
+
+wandb.finish()
