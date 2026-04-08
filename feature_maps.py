@@ -1,26 +1,33 @@
-import os
 import torch
 import matplotlib.pyplot as plt
 from torchvision import transforms
 from PIL import Image
+import os
 
 from models.classification import VGG11Classifier
 
 
-# -------- PATHS --------
-ckpt_path = "/kaggle/input/datasets/melaninayman08/all-checkpoint/classifier.pth"
-img_path = "data/oxford-iiit-pet/images/american_bulldog_71.jpg"
+# -------- PATHS (LOCAL REPO) --------
+ckpt_path = "checkpoints/classifier.pth"
+img_path = "data/oxford-iiit-pet/images/american_bulldog_71.jpg"   # you can change image
 
 
-# -------- CHECK PATHS --------
-print("Checkpoint exists:", os.path.exists(ckpt_path))
-print("Image exists:", os.path.exists(img_path))
+# -------- CHECK --------
+if not os.path.exists(ckpt_path):
+    raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+
+if not os.path.exists(img_path):
+    raise FileNotFoundError(f"Image not found: {img_path}")
+
+
+# -------- DEVICE --------
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
 
 
 # -------- LOAD MODEL --------
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 model = VGG11Classifier()
+
 checkpoint = torch.load(ckpt_path, map_location=device)
 
 if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
@@ -39,7 +46,7 @@ transform = transforms.Compose([
 ])
 
 img = Image.open(img_path).convert("RGB")
-img = transform(img).unsqueeze(0).to(device)
+img_tensor = transform(img).unsqueeze(0).to(device)
 
 
 # -------- HOOKS --------
@@ -58,20 +65,20 @@ h1 = model.encoder.block1.block[0].register_forward_hook(hook_first)
 h2 = model.encoder.block5.block[0].register_forward_hook(hook_last)
 
 
-# -------- FORWARD PASS --------
+# -------- FORWARD --------
 with torch.no_grad():
-    _ = model(img)
+    _ = model(img_tensor)
 
 h1.remove()
 h2.remove()
 
 
-# -------- PLOT FUNCTION --------
+# -------- PLOT --------
 def plot_feature_maps(feature_maps, title, num_maps=16):
     maps = feature_maps[0][0]
     num_maps = min(num_maps, maps.shape[0])
 
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(8, 8))
     for i in range(num_maps):
         plt.subplot(4, 4, i + 1)
         plt.imshow(maps[i], cmap="gray")
@@ -82,6 +89,6 @@ def plot_feature_maps(feature_maps, title, num_maps=16):
     plt.show()
 
 
-# -------- SHOW --------
+# -------- DISPLAY --------
 plot_feature_maps(first_layer_output, "First Layer Feature Maps")
 plot_feature_maps(last_layer_output, "Last Layer Feature Maps")
