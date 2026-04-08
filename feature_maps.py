@@ -1,5 +1,6 @@
 import os
 import torch
+import torch.nn as nn
 import matplotlib.pyplot as plt
 from torchvision import transforms
 from PIL import Image
@@ -8,16 +9,18 @@ import wandb
 from models.classification import VGG11Classifier
 
 
-# -------- INIT W&B --------
+# INIT W&B
+
 wandb.init(project="da6401_assignment_2", name="feature_maps")
 
 
-# -------- PATHS --------
+# PATHS
 ckpt_path = "checkpoints/classifier.pth"
-img_path = "data/oxford-iiit-pet/images/Abyssinian_94.jpg"
+img_path = "data/oxford-iiit-pet/images/beagle_1.jpg"
 
 
-# -------- CHECK --------
+# CHECK FILES
+
 if not os.path.exists(ckpt_path):
     raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
@@ -25,12 +28,13 @@ if not os.path.exists(img_path):
     raise FileNotFoundError(f"Image not found: {img_path}")
 
 
-# -------- DEVICE --------
+# DEVICE
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
 
-# -------- LOAD MODEL --------
+# LOAD MODEL
 model = VGG11Classifier()
 
 checkpoint = torch.load(ckpt_path, map_location=device)
@@ -43,7 +47,8 @@ model.to(device)
 model.eval()
 
 
-# -------- LOAD IMAGE --------
+# LOAD IMAGE
+
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
@@ -53,23 +58,63 @@ img = Image.open(img_path).convert("RGB")
 img_tensor = transform(img).unsqueeze(0).to(device)
 
 
-# -------- HOOKS --------
+# HELPER FUNCTIONS
+
+def get_first_conv(module):
+    """
+    Returns the first Conv2d found inside a module.
+    Works for custom blocks and Sequential blocks.
+    """
+    for layer in module.modules():
+        if isinstance(layer, nn.Conv2d):
+            return layer
+    raise ValueError("No Conv2d layer found in module")
+
+
+def get_last_conv(module):
+    """
+    Returns the last Conv2d found inside a module.
+    """
+    last_conv = None
+    for layer in module.modules():
+        if isinstance(layer, nn.Conv2d):
+            last_conv = layer
+    if last_conv is None:
+        raise ValueError("No Conv2d layer found in module")
+    return last_conv
+
+# HOOK STORAGE
+
 first_layer_output = []
 last_layer_output = []
 
+
+# HOOK FUNCTIONS
+
 def hook_first(module, input, output):
+    first_layer_output.clear()
     first_layer_output.append(output.detach().cpu())
 
+
 def hook_last(module, input, output):
+    last_layer_output.clear()
     last_layer_output.append(output.detach().cpu())
 
 
-# -------- ATTACH HOOKS --------
-h1 = model.encoder.block1.block[0].register_forward_hook(hook_first)
-h2 = model.encoder.block5[0].register_forward_hook(hook_last)
+# ATTACH HOOKS
+
+# First conv layer from block1
+first_conv = get_first_conv(model.encoder.block1)
+
+# Last conv layer before final pooling from block5
+last_conv = get_last_conv(model.encoder.block5)
+
+h1 = first_conv.register_forward_hook(hook_first)
+h2 = last_conv.register_forward_hook(hook_last)
 
 
-# -------- FORWARD --------
+# FORWARD PASS
+
 with torch.no_grad():
     _ = model(img_tensor)
 
@@ -77,13 +122,15 @@ h1.remove()
 h2.remove()
 
 
-# -------- PLOT + LOG --------
+# PLOT + LOG
 def plot_and_log(feature_maps, title):
-    maps = feature_maps[0][0]
+    if len(feature_maps) == 0:
+        raise ValueError(f"No feature maps captured for {title}")
+
+    maps = feature_maps[0][0]   # remove batch dimension
     num_maps = min(16, maps.shape[0])
 
     fig = plt.figure(figsize=(8, 8))
-
     for i in range(num_maps):
         ax = fig.add_subplot(4, 4, i + 1)
         ax.imshow(maps[i], cmap="gray")
@@ -92,18 +139,17 @@ def plot_and_log(feature_maps, title):
     plt.suptitle(title)
     plt.tight_layout()
 
-    # Save locally
     filename = title.replace(" ", "_") + ".png"
-    plt.savefig(filename)
-
-    # Log to W&B
+    plt.savefig(filename, dpi=300, bbox_inches="tight")
     wandb.log({title: wandb.Image(filename)})
 
+    plt.show()
     plt.close(fig)
 
 
-# -------- RUN --------
+# RUN
+
 plot_and_log(first_layer_output, "First Layer Feature Maps")
 plot_and_log(last_layer_output, "Last Layer Feature Maps")
 
-print("Logged to W&B successfully")
+print("Feature maps generated and logged to W&B successfully!")
