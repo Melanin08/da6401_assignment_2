@@ -1,15 +1,20 @@
+import os
 import torch
 import matplotlib.pyplot as plt
 from torchvision import transforms
 from PIL import Image
-import os
+import wandb
 
 from models.classification import VGG11Classifier
 
 
-# -------- PATHS (LOCAL REPO) --------
+# -------- INIT W&B --------
+wandb.init(project="da6401_assignment_2", name="feature_maps")
+
+
+# -------- PATHS --------
 ckpt_path = "checkpoints/classifier.pth"
-img_path = "data/oxford-iiit-pet/images/american_bulldog_71.jpg"   # you can change image
+img_path = "data/oxford-iiit-pet/images/Abyssinian_94.jpg"
 
 
 # -------- CHECK --------
@@ -29,7 +34,6 @@ print("Using device:", device)
 model = VGG11Classifier()
 
 checkpoint = torch.load(ckpt_path, map_location=device)
-
 if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
     model.load_state_dict(checkpoint["state_dict"], strict=False)
 else:
@@ -62,7 +66,7 @@ def hook_last(module, input, output):
 
 # -------- ATTACH HOOKS --------
 h1 = model.encoder.block1.block[0].register_forward_hook(hook_first)
-h2 = model.encoder.block5.block[0].register_forward_hook(hook_last)
+h2 = model.encoder.block5[0].register_forward_hook(hook_last)
 
 
 # -------- FORWARD --------
@@ -73,22 +77,33 @@ h1.remove()
 h2.remove()
 
 
-# -------- PLOT --------
-def plot_feature_maps(feature_maps, title, num_maps=16):
+# -------- PLOT + LOG --------
+def plot_and_log(feature_maps, title):
     maps = feature_maps[0][0]
-    num_maps = min(num_maps, maps.shape[0])
+    num_maps = min(16, maps.shape[0])
 
-    plt.figure(figsize=(8, 8))
+    fig = plt.figure(figsize=(8, 8))
+
     for i in range(num_maps):
-        plt.subplot(4, 4, i + 1)
-        plt.imshow(maps[i], cmap="gray")
-        plt.axis("off")
+        ax = fig.add_subplot(4, 4, i + 1)
+        ax.imshow(maps[i], cmap="gray")
+        ax.axis("off")
 
     plt.suptitle(title)
     plt.tight_layout()
-    plt.show()
+
+    # Save locally
+    filename = title.replace(" ", "_") + ".png"
+    plt.savefig(filename)
+
+    # Log to W&B
+    wandb.log({title: wandb.Image(filename)})
+
+    plt.close(fig)
 
 
-# -------- DISPLAY --------
-plot_feature_maps(first_layer_output, "First Layer Feature Maps")
-plot_feature_maps(last_layer_output, "Last Layer Feature Maps")
+# -------- RUN --------
+plot_and_log(first_layer_output, "First Layer Feature Maps")
+plot_and_log(last_layer_output, "Last Layer Feature Maps")
+
+print("Logged to W&B successfully")
