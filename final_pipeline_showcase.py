@@ -183,4 +183,4 @@ for i, url in enumerate(urls):
 wandb.log({"Final Pipeline Showcase Table": table})
 
 wandb.finish()
-print("Done ✅ Check both Media and Table in W&B.")
+print("Done Check both Media and Table in W&B.")
