@@ -8,18 +8,15 @@ from data.pets_dataset import OxfordIIITPetDataset
 from models.segmentation import VGG11UNet
 
 
-# =========================
 # INIT
-# =========================
 wandb.init(project="da6401_assignment_2", name="segmentation_eval")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
 
-# =========================
 # PATHS
-# =========================
+
 data_root = "data/oxford-iiit-pet"
 ckpt_path = "checkpoints/unet.pth"
 
@@ -30,9 +27,8 @@ if not os.path.exists(ckpt_path):
     raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
 
-# =========================
 # LOAD DATASET
-# =========================
+
 dataset = OxfordIIITPetDataset(
     root=data_root,
     split="test",
@@ -46,9 +42,8 @@ if len(dataset) == 0:
 loader = DataLoader(dataset, batch_size=1, shuffle=True)
 
 
-# =========================
 # LOAD MODEL
-# =========================
+
 model = VGG11UNet(num_classes=3)
 
 checkpoint = torch.load(ckpt_path, map_location=device)
@@ -61,11 +56,12 @@ model.to(device)
 model.eval()
 
 
-# =========================
 # METRICS
-# =========================
+
 def pixel_accuracy(pred, target):
     pred = pred.argmax(dim=1)
+    if target.dim() == 4:
+        target = target.squeeze(1)
     correct = (pred == target).sum().item()
     total = target.numel()
     return correct / total
@@ -73,6 +69,9 @@ def pixel_accuracy(pred, target):
 
 def dice_score(pred, target, num_classes=3, eps=1e-8):
     pred = pred.argmax(dim=1)
+    if target.dim() == 4:
+        target = target.squeeze(1)
+
     dice_scores = []
 
     for cls in range(num_classes):
@@ -101,16 +100,9 @@ def tensor_to_display_image(image_tensor):
     return img
 
 
-# =========================
 # COLORIZE MASKS
-# =========================
+
 def colorize_mask(mask):
-    """
-    Convert mask with labels {0,1,2} into RGB colors.
-    0 = black
-    1 = green
-    2 = red
-    """
     h, w = mask.shape
     color_mask = np.zeros((h, w, 3), dtype=np.uint8)
 
@@ -120,19 +112,38 @@ def colorize_mask(mask):
 
     return color_mask
 
-
-# =========================
-# W&B TABLE
-# =========================
-table = wandb.Table(columns=["Original Image", "Ground Truth Trimap", "Predicted Trimap"])
+# FULL DATASET METRICS
 
 pixel_acc_list = []
 dice_list = []
 
+with torch.no_grad():
+    for batch in loader:
+        img = batch["image"].to(device)
+        mask = batch["mask"].to(device)
 
-# =========================
-# LOOP
-# =========================
+        if mask.dim() == 4:
+            mask = mask.squeeze(1)
+
+        pred = model(img)
+
+        pa = pixel_accuracy(pred, mask)
+        dc = dice_score(pred, mask)
+
+        pixel_acc_list.append(pa)
+        dice_list.append(dc)
+
+
+# SAMPLE VISUALIZATION (5)
+
+table = wandb.Table(columns=[
+    "Original Image",
+    "Ground Truth Trimap",
+    "Predicted Trimap",
+    "Pixel Accuracy",
+    "Dice Score"
+])
+
 count = 0
 
 with torch.no_grad():
@@ -143,18 +154,18 @@ with torch.no_grad():
         img = batch["image"].to(device)
         mask = batch["mask"].to(device)
 
+        if mask.dim() == 4:
+            mask = mask.squeeze(1)
+
         pred = model(img)
 
-        # Metrics
+        # Per-sample metrics
         pa = pixel_accuracy(pred, mask)
         dc = dice_score(pred, mask)
 
-        pixel_acc_list.append(pa)
-        dice_list.append(dc)
-
         # Visuals
         img_np = tensor_to_display_image(img[0])
-        gt_np = batch["mask"][0].cpu().numpy()
+        gt_np = mask[0].cpu().numpy()
         pred_np = pred.argmax(dim=1)[0].cpu().numpy()
 
         gt_color = colorize_mask(gt_np)
@@ -164,14 +175,15 @@ with torch.no_grad():
             wandb.Image(img_np, caption="Original"),
             wandb.Image(gt_color, caption="Ground Truth Trimap"),
             wandb.Image(pred_color, caption="Predicted Trimap"),
+            pa,
+            dc
         )
 
         count += 1
 
 
-# =========================
-# LOG
-# =========================
+# LOG RESULTS
+
 mean_pa = float(np.mean(pixel_acc_list))
 mean_dice = float(np.mean(dice_list))
 
