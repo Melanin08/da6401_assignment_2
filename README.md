@@ -207,10 +207,10 @@ pip install -r requirements.txt
 ## How to Run
 
 ### Train Models
-
+```
 python train.py --data_root data/oxford-iiit-pet --task classification --epochs 15 --batch_size 32 --lr 1e-4 
 python train.py --data_root data/oxford-iiit-pet --task classification --epochs 15 --batch_size 32 --lr 1e-4 --no_batchnorm  
-
+```
 ---
 
 ### Run Evaluation and Visualization
