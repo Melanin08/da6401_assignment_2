@@ -173,7 +173,7 @@ IoU Loss improved localization accuracy, while Dice-based evaluation provided be
 
 
 ## 📂 Project Structure
----
+```
 DA6401_ASSIGNMENT_2/
 │
 ├── checkpoints/
@@ -196,7 +196,7 @@ DA6401_ASSIGNMENT_2/
 ├── requirements.txt
 └── README.md
 
----
+```
 ---
 ## ⚙️ Installation
 
