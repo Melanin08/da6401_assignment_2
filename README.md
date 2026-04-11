@@ -170,10 +170,10 @@ Fine-tuning improved performance but introduced slight interference between task
 #### Loss Functions:
 IoU Loss improved localization accuracy, while Dice-based evaluation provided better segmentation insights.
 
----
+
 
 ## 📂 Project Structure
-
+---
 DA6401_ASSIGNMENT_2/
 │
 ├── checkpoints/
@@ -197,7 +197,7 @@ DA6401_ASSIGNMENT_2/
 └── README.md
 
 ---
-
+---
 ## ⚙️ Installation
 
 pip install -r requirements.txt
