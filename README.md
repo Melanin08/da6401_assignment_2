@@ -201,9 +201,9 @@ DA6401_ASSIGNMENT_2/
 ```
 ---
 ## Installation
-
+```
 pip install -r requirements.txt
-
+```
 ---
 
 ## How to Run
