@@ -1,8 +1,8 @@
-# 🚀 DA6401 Assignment 2 – Complete Visual Perception Pipeline
+# 🚀 DA6401 Assignment 2 – Building a Complete Visual Perception Pipeline
 
 ---
 
-## 📌 Project Overview
+## Project Overview
 
 This project implements a complete multi-task visual perception pipeline using the Oxford-IIIT Pet Dataset. The system is designed to perform three core computer vision tasks:
 
@@ -14,7 +14,7 @@ All components are integrated into a single unified model capable of performing 
 
 ---
 
-## 🧠 Task 1: VGG11 Classification with Custom Regularization
+## Task 1: VGG11 Classification with Custom Regularization
 
 A VGG11 architecture was implemented from begining using PyTorch.
 
@@ -63,7 +63,7 @@ Skip connections help recover spatial information lost during downsampling, impr
 
 ---
 
-## 🔗 Task 4: Unified Multi-Task Pipeline
+## Task 4: Unified Multi-Task Pipeline
 
 All three tasks were combined into a single model.
 
@@ -85,7 +85,7 @@ All experiments were tracked and visualized using W&B.
 
 ---
 
-### 🔹 2.1 Regularization Effect of BatchNorm
+### 2.1 Regularization Effect of BatchNorm
 
 Batch Normalization resulted in:
 - Faster convergence
@@ -94,7 +94,7 @@ Batch Normalization resulted in:
 
 ---
 
-### 🔹 2.2 Dropout Analysis
+### 2.2 Dropout Analysis
 
 Three setups were compared:
 - No Dropout
@@ -106,7 +106,7 @@ Higher dropout improved generalization but slowed convergence.
 
 ---
 
-### 🔹 2.3 Transfer Learning Strategies
+### 2.3 Transfer Learning Strategies
 
 Compared:
 - Frozen backbone
@@ -118,14 +118,14 @@ Full fine-tuning achieved the best performance due to better task adaptation.
 
 ---
 
-### 🔹 2.4 Feature Map Visualization
+### 2.4 Feature Map Visualization
 
 - Early layers capture edges and textures
 - Deeper layers capture semantic structures such as faces and shapes
 
 ---
 
-### 🔹 2.5 Object Detection Analysis
+### 2.5 Object Detection Analysis
 
 W&B table includes:
 - Ground truth bounding boxes
@@ -137,7 +137,7 @@ Images with occlusion, multiple objects, or complex backgrounds led to low IoU d
 
 ---
 
-### 🔹 2.6 Segmentation Evaluation
+### 2.6 Segmentation Evaluation
 
 Metrics used:
 - Pixel Accuracy
@@ -148,7 +148,7 @@ Pixel Accuracy is misleading due to background dominance, while Dice Score provi
 
 ---
 
-### 🔹 2.7 Final Pipeline Showcase
+### 2.7 Final Pipeline Showcase
 
 The pipeline was tested on 3 unseen images from the internet.
 
@@ -159,7 +159,7 @@ Observations:
 
 ---
 
-### 🔹 2.8 Meta-Analysis and Reflection
+### 2.8 Meta-Analysis and Reflection
 
 #### Architectural Design:
 Batch Normalization improved stability across tasks, while Dropout reduced overfitting in the shared backbone.
@@ -173,7 +173,7 @@ IoU Loss improved localization accuracy, while Dice-based evaluation provided be
 ---
 
 ## 📂 Project Structure
-
+---
 DA6401_ASSIGNMENT_2/
 │
 ├── checkpoints/
@@ -204,7 +204,7 @@ pip install -r requirements.txt
 
 ---
 
-## ▶️ How to Run
+## How to Run
 
 ### Train Models
 
@@ -222,20 +222,20 @@ python final_pipeline_showcase.py
 
 ---
 
-## 📊 Weights & Biases (W&B)
+## Weights & Biases (W&B)
 
 Add your report link here after uploading:
 W&B Report: https://wandb.ai/ge26z814-iitm-india/da6401_assignment_2/reports/Building-a-Complete-Visual-Perception-Pipeline--VmlldzoxNjM4MjE5MA?accessToken=jylaaaupcezpqbulsgnhugmu2ravopx1n8t4buugqp0j20aal9n44g4sb33vkl6s
 
 ---
 
-## 🌐 GitHub Repository
+## GitHub Repository
 
-GitHub Repo: 
+GitHub Repo: https://github.com/Melanin08/da6401_assignment_2.git 
 
 ---
 
-## ⚠️ Important Notes
+## Important Notes
 
 - All models are implemented from scratch
 - Only allowed libraries are used
@@ -244,40 +244,15 @@ GitHub Repo:
 
 ---
 
-## ✅ Conclusion
+## Conclusion
 
 This project successfully builds a unified visual perception pipeline capable of classification, localization, and segmentation. The model performs well on structured images but shows limitations in handling occlusion, multiple objects, and complex real-world scenarios.
 
-```bash
-python train.py --data_root data/oxford-iiit-pet --task classification --epochs 20 --batch_size 32 --lr 1e-4 --seed 42
-python train.py --data_root data/oxford-iiit-pet --task classification --epochs 20 --batch_size 32 --lr 1e-4 --no_batchnorm --seed 42
-```
-
-Because the validation loader is deterministic, both runs use the same fixed validation input for activation histogram logging.
-
-The script logs:
-- training / validation loss and accuracy
-- fixed-input 3rd convolution activation histogram (`third_conv_activation_hist`)
-- activation mean and standard deviation (`third_conv_activation_mean`, `third_conv_activation_std`)
-- W&B run grouping under `classification_bn_comparison`
-
-For report section 2.1, compare:
-- `train_loss` and `val_loss` curves for convergence speed
-- `train_accuracy` / `val_accuracy`
-- `third_conv_activation_hist` for the same fixed input
-- which model run remains stable at higher learning rates
-
-A suggested analysis:
-- BatchNorm typically converges faster and reduces activation variance.
-- The run with BatchNorm should tolerate a larger learning rate before divergence, while the run without BatchNorm will usually require a lower stable learning rate.
 
 
 
 
-## Contact
 
-For questions or issues, please contact the teaching staff or post on the course forum.
 
----
 
-Good luck with your implementation!
+
