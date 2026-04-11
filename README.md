@@ -1,5 +1,5 @@
 # DA6401 Assignment 2 – Building a Complete Visual Perception Pipeline
-** Ayman Hamza Haji (GE26Z814) **
+Ayman Hamza Haji (GE26Z814) 
 ---
 
 ## Project Overview
