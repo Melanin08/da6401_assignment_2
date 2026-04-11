@@ -1,43 +1,252 @@
-# DA6401 Assignment-2 Skeleton Guide
+# 🚀 DA6401 Assignment 2 – Complete Visual Perception Pipeline
 
-This repository is an instructional skeleton for building the complete visual perception pipeline on Oxford-IIIT Pet.
+---
 
+## 📌 Project Overview
 
-### ADDITIONAL INSTRUCTIONS FOR ASSIGNMENT2:
-- Ensure VGG11 is implemented according to the official paper(https://arxiv.org/abs/1409.1556). The only difference being injecting BatchNorm and CustomDropout layers is your design choice.
-- Train all the networks on normalized images as input (as the test set given by autograder will be normalized images).
-- The output of Localization model = [x_center, y_center, width, height] all these numbers are with respect to image coordinates, in pixel space (not normalized)
-- Train the object localization network with the following loss function: MSE + custom_IOU_loss.
-- Make sure the custom_IOU loss is in range: [0,1]
-- In the custom IOU loss, you have to implement all the two reduction types: ["mean", "sum"] and the default reduction type should be "mean". You may include any other reduction type as well, which will help your network learn better.
-- multitask.py shd load the saved checkpoints (classifier.pth, localizer.pth, unet.pth), initialize the shared backbone and heads with these trained weights and do prediction.
-- Keep paths as relative paths for loading in multitask.py
-- Assume input image size is fixed according to vgg11 paper(can be hardcoded need not pass as args)
-- Stick to the arguments of the functions and classes given in the github repo, if you include any additional arguments make sure they always have some default value.
-- Do not import any other python packages apart from the ones mentioned in assignment pdf, if you do so the autograder will instantly crash and your submission will not be evaluated.
-- The following classes will be used by autograder: 
-    ```
-        from models.vgg11 import VGG11
-        from models.layers import CustomDropout
-        from losses.iou_loss import IoULoss
-        from multitask import MultiTaskPerceptionModel
-    ```
-- The submission link for this assignment will be available by Saturday(04/04/2026) on gradescope
+This project implements a complete multi-task visual perception pipeline using the Oxford-IIIT Pet Dataset. The system is designed to perform three core computer vision tasks:
 
+- Image Classification (37 pet breeds)
+- Object Localization (Bounding Box Prediction)
+- Semantic Segmentation (Pixel-wise Mask)
 
+All components are integrated into a single unified model capable of performing all tasks in one forward pass.
 
+---
 
+## 🧠 Task 1: VGG11 Classification with Custom Regularization
 
-### GENERAL INSTRUCTIONS:
-- From this assignment onwards, if we find any wandb report which is private/inaccessible while grading, there wont be any second chance, that submission will be marked 0 for wandb marks.
-- The entireity of plots presented in the wandb report should be interactive and logged in the wandb project. Any screenshot or images of plots will straightly be marked 0 for that question.
-- Gradescope offers an option to activate whichever submission you want to, and that submission will be used for evaluation. Under any circumstances, no requests to be raised to TAs to activate any of your prior submissions. It is the student's responsibility to do so(if required) before submission deadline.
-- Assignment2 discussion forum has been opened on moodle for any doubt clarification/discussion.   
+A VGG11 architecture was implemented from begining using PyTorch.
 
-### Running experiments with BatchNorm on vs off
-Use the `--no_batchnorm` flag to compare activation distributions and convergence behavior.
+### Key Features:
+- Custom VGG11 implementation (no pretrained models used)
+- Batch Normalization added to stabilize training
+- Custom Dropout layer implemented manually (not using torch.nn.Dropout)
 
-Example:
+### Insight:
+Batch Normalization improves convergence speed and stability, while Dropout helps reduce overfitting and improves generalization.
+
+---
+
+## 📦 Task 2: Object Localization
+
+The classification model was extended to predict bounding boxes.
+
+### Implementation:
+- VGG11 encoder used as feature extractor
+- Regression head added to predict:
+  (x_center, y_center, width, height)
+
+### Loss Functions:
+- Mean Squared Error (MSE)
+- Custom Intersection over Union (IoU) Loss
+
+### Insight:
+Fine-tuning the backbone improved localization performance compared to freezing it.
+
+---
+
+## 🎯 Task 3: Semantic Segmentation (U-Net)
+
+A U-Net style architecture was implemented using the VGG11 encoder.
+
+### Key Components:
+- Encoder: VGG11 convolutional layers
+- Decoder: Transposed Convolutions for upsampling
+- Skip Connections for combining low-level and high-level features
+
+### Loss Function:
+- Cross-Entropy Loss for pixel-wise classification
+
+### Insight:
+Skip connections help recover spatial information lost during downsampling, improving segmentation quality.
+
+---
+
+## 🔗 Task 4: Unified Multi-Task Pipeline
+
+All three tasks were combined into a single model.
+
+### Single Forward Pass Outputs:
+1. Classification logits (37 classes)
+2. Bounding box coordinates
+3. Segmentation mask
+
+### Advantages:
+- Shared feature learning
+- Reduced computation
+- Better generalization across tasks
+
+---
+
+## Weights & Biases (W&B) Experiments
+
+All experiments were tracked and visualized using W&B.
+
+---
+
+### 🔹 2.1 Regularization Effect of BatchNorm
+
+Batch Normalization resulted in:
+- Faster convergence
+- More stable training
+- Ability to use higher learning rates
+
+---
+
+### 🔹 2.2 Dropout Analysis
+
+Three setups were compared:
+- No Dropout
+- Dropout (p = 0.2)
+- Dropout (p = 0.5)
+
+Observation:
+Higher dropout improved generalization but slowed convergence.
+
+---
+
+### 🔹 2.3 Transfer Learning Strategies
+
+Compared:
+- Frozen backbone
+- Partial fine-tuning
+- Full fine-tuning
+
+Result:
+Full fine-tuning achieved the best performance due to better task adaptation.
+
+---
+
+### 🔹 2.4 Feature Map Visualization
+
+- Early layers capture edges and textures
+- Deeper layers capture semantic structures such as faces and shapes
+
+---
+
+### 🔹 2.5 Object Detection Analysis
+
+W&B table includes:
+- Ground truth bounding boxes
+- Predicted bounding boxes
+- IoU scores
+
+Failure Case:
+Images with occlusion, multiple objects, or complex backgrounds led to low IoU despite high confidence.
+
+---
+
+### 🔹 2.6 Segmentation Evaluation
+
+Metrics used:
+- Pixel Accuracy
+- Dice Score
+
+Observation:
+Pixel Accuracy is misleading due to background dominance, while Dice Score provides a better evaluation of segmentation performance.
+
+---
+
+### 🔹 2.7 Final Pipeline Showcase
+
+The pipeline was tested on 3 unseen images from the internet.
+
+Observations:
+- Works well on clear, single-object images
+- Bounding boxes become less accurate in cluttered scenes
+- Segmentation struggles under poor lighting or complex backgrounds
+
+---
+
+### 🔹 2.8 Meta-Analysis and Reflection
+
+#### Architectural Design:
+Batch Normalization improved stability across tasks, while Dropout reduced overfitting in the shared backbone.
+
+#### Encoder Strategy:
+Fine-tuning improved performance but introduced slight interference between tasks.
+
+#### Loss Functions:
+IoU Loss improved localization accuracy, while Dice-based evaluation provided better segmentation insights.
+
+---
+
+## 📂 Project Structure
+
+DA6401_ASSIGNMENT_2/
+│
+├── checkpoints/
+├── data/
+├── losses/
+├── models/
+│   ├── classification.py
+│   ├── localization.py
+│   ├── segmentation.py
+│   ├── multitask.py
+│   └── vgg11.py
+│
+├── train.py
+├── inference.py
+├── segmentation_wandb.py
+├── bbox_wandb_table.py
+├── feature_maps.py
+├── final_pipeline_showcase.py
+│
+├── requirements.txt
+└── README.md
+
+---
+
+## ⚙️ Installation
+
+pip install -r requirements.txt
+
+---
+
+## ▶️ How to Run
+
+### Train Models
+
+python train.py --data_root data/oxford-iiit-pet --task classification --epochs 15 --batch_size 32 --lr 1e-4 
+python train.py --data_root data/oxford-iiit-pet --task classification --epochs 15 --batch_size 32 --lr 1e-4 --no_batchnorm  
+
+---
+
+### Run Evaluation and Visualization
+
+python segmentation_wandb.py  
+python bbox_wandb_table.py  
+python feature_maps.py  
+python final_pipeline_showcase.py  
+
+---
+
+## 📊 Weights & Biases (W&B)
+
+Add your report link here after uploading:
+W&B Report: https://wandb.ai/ge26z814-iitm-india/da6401_assignment_2/reports/Building-a-Complete-Visual-Perception-Pipeline--VmlldzoxNjM4MjE5MA?accessToken=jylaaaupcezpqbulsgnhugmu2ravopx1n8t4buugqp0j20aal9n44g4sb33vkl6s
+
+---
+
+## 🌐 GitHub Repository
+
+GitHub Repo: 
+
+---
+
+## ⚠️ Important Notes
+
+- All models are implemented from scratch
+- Only allowed libraries are used
+- Dataset splitting avoids data leakage
+- Custom Dropout and IoU Loss are correctly implemented
+
+---
+
+## ✅ Conclusion
+
+This project successfully builds a unified visual perception pipeline capable of classification, localization, and segmentation. The model performs well on structured images but shows limitations in handling occlusion, multiple objects, and complex real-world scenarios.
 
 ```bash
 python train.py --data_root data/oxford-iiit-pet --task classification --epochs 20 --batch_size 32 --lr 1e-4 --seed 42
