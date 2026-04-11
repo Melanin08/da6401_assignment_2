@@ -4,13 +4,13 @@
 
 ## Project Overview
 
-This project implements a complete multi-task visual perception pipeline using the Oxford-IIIT Pet Dataset. The system is designed to perform three core computer vision tasks:
+This project implements a complete multi-task visual perception pipeline using the Oxford-IIIT Pet Dataset. The system performs three main computer vision tasks:
 
 - Image Classification (37 pet breeds)
 - Object Localization (Bounding Box Prediction)
 - Semantic Segmentation (Pixel-wise Mask)
 
-All components are integrated into a single unified model capable of performing all tasks in one forward pass.
+All components are combined into a single unified model that performs all tasks in one forward pass.
 
 ---
 
@@ -23,8 +23,8 @@ A VGG11 architecture was implemented from begining using PyTorch.
 - Batch Normalization added to stabilize training
 - Custom Dropout layer implemented manually (not using torch.nn.Dropout)
 
-### Insight:
-Batch Normalization improves convergence speed and stability, while Dropout helps reduce overfitting and improves generalization.
+### Result:
+Batch Normalization improves training stability and speed, while Dropout reduces overfitting and improves generalization.
 
 ---
 
@@ -35,14 +35,16 @@ The classification model was extended to predict bounding boxes.
 ### Implementation:
 - VGG11 encoder used as feature extractor
 - Regression head added to predict:
+  ```
   (x_center, y_center, width, height)
+  ```
 
 ### Loss Functions:
 - Mean Squared Error (MSE)
 - Custom Intersection over Union (IoU) Loss
 
-### Insight:
-Fine-tuning the backbone improved localization performance compared to freezing it.
+### Result:
+Fine-tuning the backbone improves localization performance compared to freezing it.
 
 ---
 
@@ -58,8 +60,8 @@ A U-Net style architecture was implemented using the VGG11 encoder.
 ### Loss Function:
 - Cross-Entropy Loss for pixel-wise classification
 
-### Insight:
-Skip connections help recover spatial information lost during downsampling, improving segmentation quality.
+### Result:
+Skip connections help recover spatial information lost during downsampling, improving segmentation quality
 
 ---
 
@@ -133,7 +135,7 @@ W&B table includes:
 - IoU scores
 
 Failure Case:
-Images with occlusion, multiple objects, or complex backgrounds led to low IoU despite high confidence.
+Images with multiple objects, or complex backgrounds lead to low IoU even when confidence is high.
 
 ---
 
@@ -144,7 +146,7 @@ Metrics used:
 - Dice Score
 
 Observation:
-Pixel Accuracy is misleading due to background dominance, while Dice Score provides a better evaluation of segmentation performance.
+Pixel Accuracy can be misleading due to background dominance, while Dice Score gives a better evaluation.
 
 ---
 
@@ -155,20 +157,20 @@ The pipeline was tested on 3 unseen images from the internet.
 Observations:
 - Works well on clear, single-object images
 - Bounding boxes become less accurate in cluttered scenes
-- Segmentation struggles under poor lighting or complex backgrounds
+- Segmentation struggles with poor lighting or complex backgrounds
 
 ---
 
 ### 2.8 Meta-Analysis and Reflection
 
 #### Architectural Design:
-Batch Normalization improved stability across tasks, while Dropout reduced overfitting in the shared backbone.
+Batch Normalization improved stability, while Dropout reduced overfitting.
 
 #### Encoder Strategy:
 Fine-tuning improved performance but introduced slight interference between tasks.
 
 #### Loss Functions:
-IoU Loss improved localization accuracy, while Dice-based evaluation provided better segmentation insights.
+IoU Loss improved localization accuracy, while Dice-based evaluation provided better segmentation understanding.
 
 
 
@@ -198,7 +200,7 @@ DA6401_ASSIGNMENT_2/
 
 ```
 ---
-## ⚙️ Installation
+## Installation
 
 pip install -r requirements.txt
 
@@ -246,7 +248,7 @@ GitHub Repo: https://github.com/Melanin08/da6401_assignment_2.git
 
 ## Conclusion
 
-This project successfully builds a unified visual perception pipeline capable of classification, localization, and segmentation. The model performs well on structured images but shows limitations in handling occlusion, multiple objects, and complex real-world scenarios.
+This project successfully builds a unified visual perception pipeline capable of classification, localization, and segmentation. The model performs well on structured images but shows limitations in handling multiple objects, and complex real-world scenarios.
 
 
 
