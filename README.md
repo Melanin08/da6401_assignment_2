@@ -1,4 +1,4 @@
-# 🚀 DA6401 Assignment 2 – Building a Complete Visual Perception Pipeline
+# DA6401 Assignment 2 – Building a Complete Visual Perception Pipeline
 
 ---
 
@@ -28,7 +28,7 @@ Batch Normalization improves convergence speed and stability, while Dropout help
 
 ---
 
-## 📦 Task 2: Object Localization
+## Task 2: Object Localization
 
 The classification model was extended to predict bounding boxes.
 
@@ -46,7 +46,7 @@ Fine-tuning the backbone improved localization performance compared to freezing 
 
 ---
 
-## 🎯 Task 3: Semantic Segmentation (U-Net)
+## Task 3: Semantic Segmentation (U-Net)
 
 A U-Net style architecture was implemented using the VGG11 encoder.
 
@@ -173,7 +173,7 @@ IoU Loss improved localization accuracy, while Dice-based evaluation provided be
 ---
 
 ## 📂 Project Structure
----
+
 DA6401_ASSIGNMENT_2/
 │
 ├── checkpoints/
