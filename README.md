@@ -214,12 +214,12 @@ python train.py --data_root data/oxford-iiit-pet --task classification --epochs 
 ---
 
 ### Run Evaluation and Visualization
-
+```
 python segmentation_wandb.py  
 python bbox_wandb_table.py  
 python feature_maps.py  
 python final_pipeline_showcase.py  
-
+```
 ---
 
 ## Weights & Biases (W&B)
