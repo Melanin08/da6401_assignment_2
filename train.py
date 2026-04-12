@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import wandb
+import matplotlib.pyplot as plt
 
 from data.pets_dataset import OxfordIIITPetDataset
 from models.classification import VGG11Classifier
@@ -20,7 +21,8 @@ from models.multitask import MultiTaskPerceptionModel
 from losses.iou_loss import IoULoss
 
 
-# Parse command-line inputs
+# PARSE COMMAND-LINE INPUTS
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Train visual perception models")
 
@@ -34,7 +36,12 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--dropout_p", type=float, default=0.5, help="Dropout probability for classification")
+    parser.add_argument(
+        "--dropout_p",
+        type=float,
+        default=0.5,
+        help="Dropout probability for classification",
+    )
     parser.add_argument(
         "--transfer_mode",
         type=str,
@@ -42,7 +49,7 @@ def parse_args():
         choices=["strict", "partial", "full"],
         help="Transfer learning strategy for segmentation",
     )
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible experiments")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument(
         "--no_batchnorm",
         action="store_false",
@@ -54,7 +61,9 @@ def parse_args():
     return parser.parse_args()
 
 
-# Build train/validation data loaders
+
+# BUILD TRAIN/VAL LOADERS
+
 def build_dataloaders(data_root, task, batch_size):
     train_dataset = OxfordIIITPetDataset(
         root=data_root,
@@ -83,13 +92,15 @@ def build_dataloaders(data_root, task, batch_size):
     return train_loader, val_loader
 
 
-# Build model + loss for each task
+
+# BUILD MODEL + LOSS
+
 def build_model_and_loss(task, device, use_batchnorm=True, dropout_p=0.5):
     if task == "classification":
         model = VGG11Classifier(
             num_classes=37,
             use_batchnorm=use_batchnorm,
-            dropout_p=dropout_p
+            dropout_p=dropout_p,
         ).to(device)
         criterion = nn.CrossEntropyLoss()
 
@@ -99,7 +110,6 @@ def build_model_and_loss(task, device, use_batchnorm=True, dropout_p=0.5):
         mse_loss = nn.MSELoss()
         iou_loss = IoULoss()
 
-        # Required loss for localization
         def criterion(pred_boxes, target_boxes):
             return mse_loss(pred_boxes, target_boxes) + iou_loss(pred_boxes, target_boxes)
 
@@ -115,7 +125,6 @@ def build_model_and_loss(task, device, use_batchnorm=True, dropout_p=0.5):
         box_iou_loss = IoULoss()
         seg_loss_fn = nn.CrossEntropyLoss()
 
-        # Weighted multitask loss so localization MSE does not dominate
         def criterion(outputs, batch):
             cls_loss = cls_loss_fn(outputs["classification"], batch["label"])
             loc_loss = box_mse_loss(outputs["localization"], batch["bbox"]) + box_iou_loss(
@@ -130,13 +139,10 @@ def build_model_and_loss(task, device, use_batchnorm=True, dropout_p=0.5):
     return model, criterion
 
 
+
+# TRANSFER LEARNING STRATEGY
+
 def apply_transfer_learning_strategy(model, task, transfer_mode):
-    """
-    Applies transfer learning strategy only for segmentation.
-    strict  -> freeze full encoder
-    partial -> freeze early encoder blocks, train deeper blocks + decoder
-    full    -> train everything
-    """
     if task != "segmentation":
         return
 
@@ -157,14 +163,14 @@ def apply_transfer_learning_strategy(model, task, transfer_mode):
         for param in model.parameters():
             param.requires_grad = True
 
-        # Freeze early blocks only
         for block in [model.encoder.block1, model.encoder.block2, model.encoder.block3]:
             for param in block.parameters():
                 param.requires_grad = False
 
 
-# IoU metric for box evaluation
-# Boxes are [x_center, y_center, width, height]
+
+# BOX IOU METRIC
+
 def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
     pred_w = torch.clamp(pred_boxes[:, 2], min=0.0)
     pred_h = torch.clamp(pred_boxes[:, 3], min=0.0)
@@ -197,9 +203,8 @@ def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
     return inter_area / union_area
 
 
-# Run one epoch
-# train=True  -> training mode
-# train=False -> validation mode
+# RUN ONE EPOCH
+
 def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True):
     if train:
         model.train()
@@ -207,13 +212,10 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
         model.eval()
 
     total_loss = 0.0
-
     total_correct = 0
     total_samples = 0
-
     total_pixels_correct = 0
     total_pixels = 0
-
     total_iou = 0.0
     total_iou_batches = 0
 
@@ -226,7 +228,6 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
             if train:
                 optimizer.zero_grad()
 
-            # ----- Classification -----
             if task == "classification":
                 labels = batch["label"].to(device)
 
@@ -237,7 +238,6 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
                 total_correct += (preds == labels).sum().item()
                 total_samples += labels.size(0)
 
-            # ----- Localization -----
             elif task == "localization":
                 targets = batch["bbox"].to(device)
 
@@ -247,7 +247,6 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
                 total_iou += box_iou_xywh(outputs, targets).mean().item()
                 total_iou_batches += 1
 
-            # ----- Segmentation -----
             elif task == "segmentation":
                 masks = batch["mask"].to(device)
 
@@ -258,7 +257,6 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
                 total_pixels_correct += (preds == masks).sum().item()
                 total_pixels += masks.numel()
 
-            # ----- Multitask -----
             elif task == "multitask":
                 labels = batch["label"].to(device)
                 boxes = batch["bbox"].to(device)
@@ -309,52 +307,111 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
     return metrics
 
 
-def register_third_conv_hook(model, activation_container):
+# GET 3RD CONV LAYER SAFELY
+
+def get_third_conv_layer(model):
     if not hasattr(model, "encoder"):
+        return None
+
+    conv_layers = []
+    for module in model.encoder.modules():
+        if isinstance(module, nn.Conv2d):
+            conv_layers.append(module)
+
+    if len(conv_layers) < 3:
+        return None
+
+    return conv_layers[2]
+
+
+def register_third_conv_hook(model, activation_container):
+    third_conv = get_third_conv_layer(model)
+    if third_conv is None:
         return None
 
     def hook(module, inp, out):
         activation_container["third_conv"] = out.detach().cpu()
 
-    return model.encoder.block3[0].register_forward_hook(hook)
+    return third_conv.register_forward_hook(hook)
 
 
 def capture_third_conv_activation(model, fixed_images):
     activations = {}
     handle = register_third_conv_hook(model, activations)
 
+    if handle is None:
+        return {}
+
     model.eval()
     with torch.no_grad():
         _ = model(fixed_images)
 
-    if handle is not None:
-        handle.remove()
+    handle.remove()
 
     if "third_conv" not in activations:
         return {}
 
-    act = activations["third_conv"].cpu().numpy()
+    act = activations["third_conv"].numpy()
+
     return {
         "third_conv_activation_hist": wandb.Histogram(act),
-        "third_conv_activation_mean": act.mean().item() if hasattr(act, "mean") else float(act.mean()),
-        "third_conv_activation_std": act.std().item() if hasattr(act, "std") else float(act.std()),
+        "third_conv_activation_mean": float(act.mean()),
+        "third_conv_activation_std": float(act.std()),
     }
 
 
-# Required checkpoint filenames
-def get_save_path(task):
+def log_distribution_plot(model, fixed_images, epoch):
+    activations = {}
+    handle = register_third_conv_hook(model, activations)
+
+    if handle is None:
+        return None
+
+    model.eval()
+    with torch.no_grad():
+        _ = model(fixed_images)
+
+    handle.remove()
+
+    if "third_conv" not in activations:
+        return None
+
+    act = activations["third_conv"].numpy().reshape(-1)
+
+    fig = plt.figure(figsize=(7, 4))
+    plt.hist(act, bins=100, density=True, alpha=0.7)
+    plt.xlabel("Activation value")
+    plt.ylabel("Density")
+    plt.title(f"3rd Conv Layer Activation Distribution - Epoch {epoch}")
+    plt.tight_layout()
+
+    return fig
+
+
+# =========================
+# SAVE PATHS
+# =========================
+def get_save_path(task, batchnorm=True):
     if task == "classification":
-        return "checkpoints/classifier.pth"
+        if batchnorm:
+            return "checkpoints/classifier.pth"
+        return "checkpoints/classifier_no_bn.pth"
+
     if task == "localization":
         return "checkpoints/localizer.pth"
+
     if task == "segmentation":
         return "checkpoints/unet.pth"
+
     if task == "multitask":
         return "checkpoints/multitask.pth"
+
     raise ValueError("Invalid task")
 
 
-# Main training entry
+
+# MAIN
+
 def main():
     args = parse_args()
 
@@ -371,7 +428,7 @@ def main():
         args.task,
         device,
         use_batchnorm=args.batchnorm,
-        dropout_p=args.dropout_p
+        dropout_p=args.dropout_p,
     )
 
     apply_transfer_learning_strategy(model, args.task, args.transfer_mode)
@@ -399,10 +456,11 @@ def main():
             "seed": args.seed,
         },
     )
+
     wandb.watch(model, log="all", log_freq=100)
 
     best_val_loss = float("inf")
-    save_path = get_save_path(args.task)
+    save_path = get_save_path(args.task, batchnorm=args.batchnorm)
 
     for epoch in range(args.epochs):
         epoch_start = time.time()
@@ -467,8 +525,14 @@ def main():
             wandb_log["train_iou"] = train_metrics["iou"]
             wandb_log["val_iou"] = val_metrics["iou"]
 
-        activation_logs = capture_third_conv_activation(model, fixed_images)
-        wandb_log.update(activation_logs)
+        if args.task == "classification":
+            activation_logs = capture_third_conv_activation(model, fixed_images)
+            wandb_log.update(activation_logs)
+
+            dist_fig = log_distribution_plot(model, fixed_images, epoch + 1)
+            if dist_fig is not None:
+                wandb_log["conv3_distribution_plot"] = wandb.Image(dist_fig)
+                plt.close(dist_fig)
 
         wandb.log(wandb_log)
 
@@ -485,6 +549,7 @@ def main():
 
     print(f"\nTraining finished. Best validation loss: {best_val_loss:.4f}")
     print(f"Best checkpoint saved to: {save_path}")
+    wandb.finish()
 
 
 if __name__ == "__main__":
