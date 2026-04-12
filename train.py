@@ -20,7 +20,6 @@ from models.segmentation import VGG11UNet
 from models.multitask import MultiTaskPerceptionModel
 from losses.iou_loss import IoULoss
 
-
 # PARSE COMMAND-LINE INPUTS
 
 def parse_args():
@@ -60,8 +59,6 @@ def parse_args():
 
     return parser.parse_args()
 
-
-
 # BUILD TRAIN/VAL LOADERS
 
 def build_dataloaders(data_root, task, batch_size):
@@ -90,8 +87,6 @@ def build_dataloaders(data_root, task, batch_size):
     )
 
     return train_loader, val_loader
-
-
 
 # BUILD MODEL + LOSS
 
@@ -138,8 +133,6 @@ def build_model_and_loss(task, device, use_batchnorm=True, dropout_p=0.5):
 
     return model, criterion
 
-
-
 # TRANSFER LEARNING STRATEGY
 
 def apply_transfer_learning_strategy(model, task, transfer_mode):
@@ -166,8 +159,6 @@ def apply_transfer_learning_strategy(model, task, transfer_mode):
         for block in [model.encoder.block1, model.encoder.block2, model.encoder.block3]:
             for param in block.parameters():
                 param.requires_grad = False
-
-
 
 # BOX IOU METRIC
 
@@ -201,7 +192,6 @@ def box_iou_xywh(pred_boxes, target_boxes, eps=1e-6):
 
     union_area = pred_area + target_area - inter_area + eps
     return inter_area / union_area
-
 
 # RUN ONE EPOCH
 
@@ -306,7 +296,6 @@ def run_one_epoch(model, loader, optimizer, criterion, task, device, train=True)
 
     return metrics
 
-
 # GET 3RD CONV LAYER SAFELY
 
 def get_third_conv_layer(model):
@@ -388,9 +377,8 @@ def log_distribution_plot(model, fixed_images, epoch):
     return fig
 
 
-# =========================
 # SAVE PATHS
-# =========================
+
 def get_save_path(task, batchnorm=True):
     if task == "classification":
         if batchnorm:
@@ -407,8 +395,6 @@ def get_save_path(task, batchnorm=True):
         return "checkpoints/multitask.pth"
 
     raise ValueError("Invalid task")
-
-
 
 # MAIN
 
